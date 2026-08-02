@@ -443,6 +443,20 @@
         </div>
     </div>
 
+    <!-- ADMOB REKLAM MODALI SIMULATION -->
+    <div id="adModal" class="modal hidden">
+        <div class="modal-card">
+            <div style="font-size:40px; margin-bottom:6px;">🎬</div>
+            <h3 style="font-size:15px; color:#c084fc;">Sponsorlu Video Reklam</h3>
+            <p style="font-size:11px; color:#94a3b8; margin:6px 0 12px 0;">Ödüllü sponsorlu reklam oynatılıyor...</p>
+            <div style="background:rgba(255,255,255,0.06); border-radius:16px; padding:16px; margin-bottom:12px;">
+                <div style="font-size:28px; font-weight:800; color:#fbbf24;" id="adTimer">5</div>
+                <div style="font-size:10px; color:#cbd5e1; margin-top:4px;">Reklamın bitmesine kalan süre</div>
+            </div>
+            <div style="font-size:10px; color:#34d399; font-weight:700;">⚡ Reklam tamamlandığında 2x YürüPara hesabınıza aktarılacaktır!</div>
+        </div>
+    </div>
+
     <div id="alertBox"></div>
 
     <script>
@@ -531,6 +545,30 @@
 
         async function convertSteps() {
             const isDouble = document.getElementById('doubleToggle').checked;
+
+            if (isDouble) {
+                // Reklam Simülasyonu Modalını Başlat
+                const adModal = document.getElementById('adModal');
+                const adTimer = document.getElementById('adTimer');
+                adModal.classList.remove('hidden');
+                let count = 5;
+                adTimer.textContent = count;
+
+                const timer = setInterval(() => {
+                    count--;
+                    adTimer.textContent = count;
+                    if (count <= 0) {
+                        clearInterval(timer);
+                        adModal.classList.add('hidden');
+                        executeStepConversion(true);
+                    }
+                }, 1000);
+            } else {
+                executeStepConversion(false);
+            }
+        }
+
+        async function executeStepConversion(isDouble) {
             try {
                 const res = await fetch('/api/v2/steps/convert', {
                     method: 'POST',
@@ -653,6 +691,14 @@
                 const data = await res.json();
                 showAlert(data.message || data.error);
                 fetchUserData();
+
+                // Eğer diyet planı alındıysa otomatik Profil sekmesine geç ve diyet planını aç
+                if (data.isDiet) {
+                    setTimeout(() => {
+                        switchNav('profile');
+                        fetchPersonalizedDiet();
+                    }, 800);
+                }
             } catch (err) {}
         }
 
