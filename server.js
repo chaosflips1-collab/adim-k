@@ -26,28 +26,26 @@ mongoose.connect(MONGO_URI)
     })
     .catch((err) => console.log('MongoDB bağlantı hatası:', err));
 
-// Demo Verilerini Tohumlama (Seed) - %100 DİJİTAL ÜRÜNLER & YÜRÜPARA
+// DENGELİ EKONOMİ MODELİ (1.000 Adım = 1 YürüPara)
 async function seedDemoData() {
     try {
-        // Mağazadaki eski verileri %100 dijital ürünlerle yenileyelim
         await Reward.deleteMany({});
         await Reward.insertMany([
-            { title: 'Starbucks Dijital Kahve Kodu', description: 'Tüm mağazalarda kasada gösterilebilir dijital e-kod.', pointsCost: 150, category: 'Dijital İçecek Kodu', code: 'STB-DIGITAL-8842', icon: '☕', stock: 100 },
-            { title: 'Trendyol 200 TL Dijital Hediye Kodu', description: 'Trendyol cüzdanım alanında anında aktif olan hediye kodu.', pointsCost: 800, category: 'Dijital Alışveriş Kodu', code: 'TRND-200-DIGI', icon: '🛍️', stock: 50 },
-            { title: 'Steam 100 TL Dijital E-Pin Kodu', description: 'Steam cüzdanınıza anında eklenen dijital E-Pin kodu.', pointsCost: 650, category: 'Dijital Oyun Kodu', code: 'STEAM-100-DIGI', icon: '🎮', stock: 60 },
-            { title: 'Valorant 1000 VP Dijital Kodu', description: 'Riot Games mağazasında geçerli dijital VP kodu.', pointsCost: 600, category: 'Dijital Oyun Kodu', code: 'VALO-1000VP-DIGI', icon: '🎯', stock: 45 },
-            { title: 'Spotify Premium 1 Ay Dijital Kod', description: '1 Aylık Bireysel Spotify üyelik dijital aktifleştirme kodu.', pointsCost: 350, category: 'Dijital Üyelik Kodu', code: 'SPOTIFY-1MO-DIGI', icon: '🎵', stock: 80 },
-            { title: 'Google Play 100 TL Dijital Kodu', description: 'Play Store hesabınıza bakiye ekleyen dijital kod.', pointsCost: 500, category: 'Dijital Market Kodu', code: 'GPLAY-100-DIGI', icon: '📱', stock: 50 }
+            { title: 'Starbucks Dijital Kahve Kodu', description: 'Tüm küçük boy kahvelerde geçerli e-kod.', pointsCost: 100, category: 'Dijital İçecek', code: 'STB-DIGITAL-8842', icon: '☕', stock: 100 },
+            { title: 'Spotify Premium 1 Ay Dijital Kod', description: '1 Aylık Bireysel Spotify üyelik dijital kodu.', pointsCost: 150, category: 'Dijital Üyelik', code: 'SPOTIFY-1MO-DIGI', icon: '🎵', stock: 80 },
+            { title: 'Valorant 1000 VP Dijital Kodu', description: 'Riot Games mağazasında geçerli dijital VP kodu.', pointsCost: 400, category: 'Dijital Oyun Kodu', code: 'VALO-1000VP-DIGI', icon: '🎯', stock: 45 },
+            { title: 'Steam 100 TL Dijital E-Pin Kodu', description: 'Steam cüzdanınıza bakiye ekleyen E-Pin kodu.', pointsCost: 450, category: 'Dijital Oyun Kodu', code: 'STEAM-100-DIGI', icon: '🎮', stock: 60 },
+            { title: 'Google Play 100 TL Dijital Kodu', description: 'Play Store hesabınıza bakiye ekleyen dijital kod.', pointsCost: 450, category: 'Dijital Market Kodu', code: 'GPLAY-100-DIGI', icon: '📱', stock: 50 },
+            { title: 'Trendyol 200 TL Dijital Hediye Kodu', description: 'Trendyol cüzdanım alanında anında aktif olan kod.', pointsCost: 850, category: 'Dijital Alışveriş', code: 'TRND-200-DIGI', icon: '🛍️', stock: 30 }
         ]);
 
-        // Demo Liderlik Tablosu
         const userCount = await User.countDocuments();
         if (userCount < 5) {
             const dummyPassword = await bcrypt.hash('123456', 10);
             await User.insertMany([
-                { name: 'Ahmet Yılmaz 🥇', email: 'ahmet@adimkasasi.com', password: dummyPassword, steps: 142500, points: 1425, calories: 5700, streak: 12, level: 4, multiplier: 2.0, role: 'user' },
-                { name: 'Zeynep Kaya 🥈', email: 'zeynep@adimkasasi.com', password: dummyPassword, steps: 118400, points: 1184, calories: 4736, streak: 9, level: 4, multiplier: 2.0, role: 'user' },
-                { name: 'Burak Demir 🥉', email: 'burak@adimkasasi.com', password: dummyPassword, steps: 95200, points: 952, calories: 3808, streak: 7, level: 3, multiplier: 1.5, role: 'user' }
+                { name: 'Ahmet Yılmaz 🥇', email: 'ahmet@adimkasasi.com', password: dummyPassword, steps: 142500, points: 185, calories: 5700, streak: 12, level: 4, multiplier: 2.0, role: 'user' },
+                { name: 'Zeynep Kaya 🥈', email: 'zeynep@adimkasasi.com', password: dummyPassword, steps: 118400, points: 140, calories: 4736, streak: 9, level: 4, multiplier: 2.0, role: 'user' },
+                { name: 'Burak Demir 🥉', email: 'burak@adimkasasi.com', password: dummyPassword, steps: 95200, points: 95, calories: 3808, streak: 7, level: 3, multiplier: 1.5, role: 'user' }
             ]);
         }
     } catch (err) {
@@ -60,15 +58,14 @@ function getTodayStr() {
 }
 
 function calculateLevel(steps) {
-    if (steps >= 100000) return { level: 4, title: 'Efsane', multiplier: 2.0 };
-    if (steps >= 50000) return { level: 3, title: 'Maratoncu', multiplier: 1.5 };
-    if (steps >= 20000) return { level: 2, title: 'Tempolu', multiplier: 1.2 };
+    if (steps >= 150000) return { level: 4, title: 'Efsane', multiplier: 2.0 };
+    if (steps >= 75000) return { level: 3, title: 'Maratoncu', multiplier: 1.5 };
+    if (steps >= 25000) return { level: 2, title: 'Tempolu', multiplier: 1.25 };
     return { level: 1, title: 'Yürüyüşçü', multiplier: 1.0 };
 }
 
 // --- API ROTALARI ---
 
-// 1. Kayıt Ol
 app.post('/api/v2/register', async (req, res) => {
     try {
         const { name, email, password } = req.body;
@@ -101,7 +98,6 @@ app.post('/api/v2/register', async (req, res) => {
     }
 });
 
-// 2. Giriş Yap
 app.post('/api/v2/login', async (req, res) => {
     try {
         const { email, password } = req.body;
@@ -126,7 +122,6 @@ app.post('/api/v2/login', async (req, res) => {
     }
 });
 
-// Google Auth
 app.post('/api/v2/auth/google', async (req, res) => {
     try {
         const { googleToken, name, email } = req.body;
@@ -169,7 +164,6 @@ app.post('/api/v2/auth/google', async (req, res) => {
     }
 });
 
-// 3. Me
 app.get('/api/v2/user/me', authMiddleware, async (req, res) => {
     try {
         const user = await User.findById(req.user.id).select('-password');
@@ -189,7 +183,6 @@ app.get('/api/v2/user/me', authMiddleware, async (req, res) => {
     }
 });
 
-// 4. Adım Ekleme
 app.post('/api/v2/steps/add', authMiddleware, async (req, res) => {
     try {
         const amount = parseInt(req.body.amount) || 500;
@@ -218,7 +211,7 @@ app.post('/api/v2/steps/add', authMiddleware, async (req, res) => {
     }
 });
 
-// 5. Adımları YürüPara'ya Çevir (Seviye Çarpanlı)
+// 5. Adımları YürüPara'ya Çevir (DENGELİ MODEL: 1.000 Adım = 1 YP * Seviye Çarpanı)
 app.post('/api/v2/steps/convert', authMiddleware, async (req, res) => {
     try {
         const isDouble = req.body.isDouble === true;
@@ -236,25 +229,27 @@ app.post('/api/v2/steps/convert', authMiddleware, async (req, res) => {
         }
 
         const availableToConvert = Math.min(user.unconvertedSteps, DAILY_MAX_CAP - user.todayConvertedSteps);
-        if (availableToConvert < 100) {
-            return res.status(400).json({ error: "En az 100 birikmiş adımınız olmalıdır." });
+        if (availableToConvert < 1000) {
+            return res.status(400).json({ error: "Dönüştürmek için en az 1.000 birikmiş adımınız olmalıdır." });
         }
 
-        const convertAmount = Math.floor(availableToConvert / 100) * 100;
+        const convertAmount = Math.floor(availableToConvert / 1000) * 1000;
         const lvlData = calculateLevel(user.steps);
-        let earnedPoints = (convertAmount / 100) * 10 * lvlData.multiplier;
+        
+        // 1.000 Adım = 1 YP * Level Multiplier
+        let earnedPoints = (convertAmount / 1000) * 1 * lvlData.multiplier;
 
         if (isDouble) earnedPoints *= 2; // 2x Sponsorlu Bonus
 
         user.unconvertedSteps -= convertAmount;
         user.todayConvertedSteps += convertAmount;
-        user.points += Math.round(earnedPoints);
+        user.points += Math.round(earnedPoints * 10) / 10; // 1 ondalıklı hassasiyet
         user.level = lvlData.level;
         user.multiplier = lvlData.multiplier;
 
         await user.save();
         res.json({
-            message: `🎉 ${convertAmount} adım dönüştürüldü! (${lvlData.multiplier}x Seviye Çarpanı ile ${Math.round(earnedPoints)} YürüPara kazandınız)`,
+            message: `🎉 ${convertAmount.toLocaleString('tr-TR')} adım dönüştürüldü! (${lvlData.multiplier}x Seviye Çarpanı ile +${(Math.round(earnedPoints * 10) / 10)} YürüPara kazandınız)`,
             earnedPoints,
             user
         });
@@ -263,7 +258,7 @@ app.post('/api/v2/steps/convert', authMiddleware, async (req, res) => {
     }
 });
 
-// 6. SU TAKİBİ
+// 6. SU TAKİBİ (Dengeli Bonus: +3 YP)
 app.post('/api/v2/health/water', authMiddleware, async (req, res) => {
     try {
         const user = await User.findById(req.user.id);
@@ -272,8 +267,8 @@ app.post('/api/v2/health/water', authMiddleware, async (req, res) => {
         let bonusMsg = `💧 1 Bardak Su İçildi! (${user.waterGlasses}/8 Bardak)`;
         if (user.waterGlasses === 8 && !user.completedQuests.includes('water')) {
             user.completedQuests.push('water');
-            user.points += 50;
-            bonusMsg = "🎉 Tebrikler! Günlük 2 Litre Su Hedefine ulaştınız ve +50 YürüPara kazandınız!";
+            user.points += 3; // +3 YP
+            bonusMsg = "🎉 Tebrikler! Günlük 2 Litre Su Hedefine ulaştınız ve +3 YürüPara kazandınız!";
         }
 
         await user.save();
@@ -283,7 +278,7 @@ app.post('/api/v2/health/water', authMiddleware, async (req, res) => {
     }
 });
 
-// 7. GÜNLÜK SAĞLIK GÖREVLERİ
+// 7. GÜNLÜK SAĞLIK GÖREVLERİ (Dengeli Bonuslar: +2 YP, +5 YP)
 app.post('/api/v2/health/quest', authMiddleware, async (req, res) => {
     try {
         const { questType } = req.body;
@@ -297,10 +292,10 @@ app.post('/api/v2/health/quest', authMiddleware, async (req, res) => {
         let title = '';
 
         if (questType === 'sleep') {
-            rewardPoints = 100;
+            rewardPoints = 2;
             title = '8 Saat Uyu Görevi';
         } else if (questType === 'workout') {
-            rewardPoints = 150;
+            rewardPoints = 5;
             title = '30 Dk Antrenman Görevi';
         } else {
             return res.status(400).json({ error: "Geçersiz görev tipi." });
@@ -316,7 +311,7 @@ app.post('/api/v2/health/quest', authMiddleware, async (req, res) => {
     }
 });
 
-// 8. Şans Çarkı, Liderlik & Bağış
+// 8. Şans Çarkı (Dengeli 1-5 YP)
 app.post('/api/v2/wheel/spin', authMiddleware, async (req, res) => {
     try {
         const user = await User.findById(req.user.id);
@@ -326,7 +321,7 @@ app.post('/api/v2/wheel/spin', authMiddleware, async (req, res) => {
             return res.status(400).json({ error: "Bugün zaten çark çevirdiniz!" });
         }
 
-        const prizes = [50, 100, 150, 200, 300, 500];
+        const prizes = [1, 2, 3, 4, 5];
         const wonPoints = prizes[Math.floor(Math.random() * prizes.length)];
 
         user.points += wonPoints;
@@ -362,7 +357,7 @@ app.post('/api/v2/donate', authMiddleware, async (req, res) => {
         const donation = new Donation({
             userId: user._id,
             charityName,
-            stepsDonated: points * 10,
+            stepsDonated: points * 1000,
             pointsValue: points,
             icon: charityName.includes('Mama') ? '🐶' : (charityName.includes('Fidan') ? '🌲' : (charityName.includes('Kitap') ? '📚' : '❤️'))
         });
@@ -376,7 +371,6 @@ app.post('/api/v2/donate', authMiddleware, async (req, res) => {
     }
 });
 
-// 9. DİJİTAL MAĞAZA VE KOD TESLİMATI
 app.get('/api/v2/rewards', async (req, res) => {
     try {
         const rewards = await Reward.find().sort({ pointsCost: 1 });
@@ -391,12 +385,11 @@ app.post('/api/v2/rewards/claim', authMiddleware, async (req, res) => {
         if (!reward || reward.stock <= 0) return res.status(400).json({ error: "Stokta yok." });
 
         const user = await User.findById(req.user.id);
-        if (user.points < reward.pointsCost) return res.status(400).json({ error: "Yetersiz YürüPara Bakiyesi!" });
+        if (user.points < reward.pointsCost) return res.status(400).json({ error: `Yetersiz YürüPara! Bu ürün için ${reward.pointsCost} YP gereklidir.` });
 
         user.points -= reward.pointsCost;
         reward.stock -= 1;
 
-        // Dijital E-Pin / Kupon Kodu Üretimi
         const uniqueDigitalCode = `${reward.code}-${Math.floor(100000 + Math.random() * 900000)}`;
 
         const claim = new Claim({ 
