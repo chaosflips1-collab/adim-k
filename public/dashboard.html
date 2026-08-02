@@ -800,15 +800,17 @@
             }
         }
 
-        // CANLI İVMEÖLÇER (PEDOMETRE) SENSÖR ENTEGRASYONU
+        // BİYOMEKANİK PEDOMETRE VE SALLANTI FİLTRESİ (ANTI-SHAKE)
         let isSensorActive = false;
-        let stepThreshold = 11.8;
         let lastStepTime = 0;
+        let consecutiveSteps = 0;
+        let stepWindow = [];
 
         async function toggleStepSensor() {
             if (isSensorActive) {
                 window.removeEventListener('devicemotion', handleMotion);
                 isSensorActive = false;
+                consecutiveSteps = 0;
                 document.getElementById('sensorBtn').textContent = '📱 CANLI SENSÖRÜ BAŞLAT (Yürürken Say)';
                 document.getElementById('sensorBtn').className = 'm-btn m-btn-blue';
                 showAlert('Sensör durduruldu.');
@@ -834,21 +836,40 @@
         function startMotionListener() {
             window.addEventListener('devicemotion', handleMotion);
             isSensorActive = true;
-            document.getElementById('sensorBtn').textContent = '🟢 SENSÖR AKTİF (Telefonla Yürüyün)';
+            document.getElementById('sensorBtn').textContent = '🟢 YÜRÜYÜŞ SENSÖRÜ AKTİF';
             document.getElementById('sensorBtn').className = 'm-btn m-btn-gold';
-            showAlert('Sensör aktif! Telefonunuzla yürüyün.');
+            showAlert('Gerçek Yürüyüş Sensörü aktif! Telefonunuzla yürüyün.');
         }
 
         function handleMotion(e) {
             const acc = e.accelerationIncludingGravity;
-            if (!acc || !acc.x) return;
+            if (!acc || typeof acc.x === 'undefined') return;
 
             const mag = Math.sqrt(acc.x * acc.x + acc.y * acc.y + acc.z * acc.z);
             const now = Date.now();
+            const timeDiff = now - lastStepTime;
 
-            if (mag > stepThreshold && (now - lastStepTime) > 350) {
-                lastStepTime = now;
-                addSteps(1);
+            // 1. ŞİDDET VE İVME FİLTRESİ:
+            // Gerçek yürüyüş ivmesi 10.8 m/s^2 ile 16.5 m/s^2 arasındadır.
+            // Hızlı el sallamaları (>16.5 m/s^2) veya hafif titreşimler (<10.8 m/s^2) adım sayılmaz.
+            if (mag >= 10.8 && mag <= 16.5) {
+                
+                // 2. RİTİM & CADENCE FİLTRESİ (360ms - 750ms):
+                if (timeDiff >= 360 && timeDiff <= 750) {
+                    stepWindow.push(timeDiff);
+                    if (stepWindow.length > 4) stepWindow.shift();
+
+                    consecutiveSteps++;
+
+                    // 3. 4-ADIM TAMPON DOĞRULAMA (Rastgele sallamaları engeller)
+                    if (consecutiveSteps >= 4) {
+                        lastStepTime = now;
+                        addSteps(1);
+                    }
+                } else if (timeDiff > 1200) {
+                    consecutiveSteps = 0;
+                    stepWindow = [];
+                }
             }
         }
 
