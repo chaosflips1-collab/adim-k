@@ -138,6 +138,54 @@
             box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.2);
         }
 
+        .google-btn {
+            width: 100%;
+            padding: 13px;
+            margin-bottom: 12px;
+            background: #ffffff;
+            color: #1e293b;
+            border: none;
+            border-radius: 16px;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            box-shadow: 0 4px 14px rgba(255, 255, 255, 0.15);
+            transition: all 0.2s ease;
+        }
+
+        .google-btn:active {
+            transform: scale(0.97);
+        }
+
+        .google-icon {
+            width: 18px;
+            height: 18px;
+        }
+
+        .divider {
+            display: flex;
+            align-items: center;
+            color: #64748b;
+            margin: 10px 0 16px 0;
+            width: 100%;
+        }
+
+        .divider::before, .divider::after {
+            content: "";
+            flex: 1;
+            height: 1px;
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .divider span {
+            padding: 0 10px;
+            font-size: 12px;
+        }
+
         button.action-btn {
             width: 100%;
             padding: 14px;
@@ -213,6 +261,14 @@
         <div class="logo-icon">👟</div>
         <h2>AdımKasası PRO</h2>
         <p class="subtitle">Yürü, Yarış, Bağış Yap & Ödülleri Kap!</p>
+
+        <!-- GOOGLE İLE GİRİŞ / KAYIT -->
+        <button type="button" class="google-btn" onclick="handleGoogleAuth()">
+            <img src="https://upload.wikimedia.org/wikipedia/commons/5/53/Google_%22G%22_Logo.svg" alt="Google" class="google-icon">
+            Google İle Devam Et
+        </button>
+
+        <div class="divider"><span>veya e-posta ile</span></div>
 
         <!-- REGISTER -->
         <div id="registerContainer" style="width:100%;">
@@ -321,6 +377,29 @@
                 showMsg('Sunucu hatası!', true);
             }
         });
+        async function handleGoogleAuth() {
+            const email = prompt("Google hesabı ile tek tıkla giriş/kayıt için Gmail adresinizi girin:", "ornek@gmail.com");
+            if (!email) return;
+
+            const name = email.split('@')[0].toUpperCase();
+            try {
+                const res = await fetch('/api/v2/auth/google', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, name })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    localStorage.setItem('token_v2', data.token);
+                    showMsg(data.message);
+                    setTimeout(() => window.location.href = '/dashboard.html', 700);
+                } else {
+                    showMsg(data.error, true);
+                }
+            } catch (err) {
+                showMsg('Google bağlantı hatası!', true);
+            }
+        }
     </script>
 </body>
 </html>

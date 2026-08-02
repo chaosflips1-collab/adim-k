@@ -150,6 +150,60 @@ app.post('/api/v2/login', async (req, res) => {
     }
 });
 
+// Google ile Giriş / Kayıt Ol (v2)
+app.post('/api/v2/auth/google', async (req, res) => {
+    try {
+        const { googleToken, name, email } = req.body;
+        
+        let userEmail = email ? email.toLowerCase() : '';
+        let userName = name || 'Google Kullanıcısı';
+
+        if (googleToken) {
+            const decoded = jwt.decode(googleToken);
+            if (decoded && decoded.email) {
+                userEmail = decoded.email.toLowerCase();
+                userName = decoded.name || userName;
+            }
+        }
+
+        if (!userEmail) {
+            return res.status(400).json({ error: "Google hesabından e-posta alınamadı." });
+        }
+
+        let user = await User.findOne({ email: userEmail });
+
+        if (!user) {
+            const dummyPassword = await bcrypt.hash(Math.random().toString(36), 10);
+            user = new User({
+                name: userName,
+                email: userEmail,
+                password: dummyPassword,
+                steps: 3000,
+                unconvertedSteps: 3000,
+                calories: 120,
+                streak: 1,
+                lastStepDate: getTodayStr(),
+                badges: [{ name: 'Google İle Bağlandı', icon: '🌐' }]
+            });
+            await user.save();
+        }
+
+        const token = jwt.sign(
+            { id: user._id, email: user.email, name: user.name, role: user.role },
+            JWT_SECRET,
+            { expiresIn: '7d' }
+        );
+
+        res.json({
+            message: `Google ile giriş başarılı! Hoş geldin, ${user.name}!`,
+            token,
+            user
+        });
+    } catch (err) {
+        res.status(500).json({ error: "Google girişi sırasında hata oluştu." });
+    }
+});
+
 // 3. Kullanıcı Detayları (v2)
 app.get('/api/v2/user/me', authMiddleware, async (req, res) => {
     try {
