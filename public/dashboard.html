@@ -157,7 +157,7 @@
         .cap-bar { height: 6px; background: rgba(255, 255, 255, 0.1); border-radius: 10px; overflow: hidden; margin-top: 4px; }
         .cap-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #a855f7, #ec4899); transition: width 0.4s ease; }
 
-        /* BOTTOM NAVBAR (6 ITEMS) */
+        /* BOTTOM NAVBAR */
         .bottom-nav {
             position: absolute;
             bottom: 0;
@@ -186,7 +186,16 @@
         .m-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.06); }
         .m-row:last-child { border-bottom: none; }
 
-        /* WATER GLASSES GRID */
+        .digital-tag {
+            background: rgba(52, 211, 153, 0.15);
+            color: #34d399;
+            border: 1px solid rgba(52, 211, 153, 0.3);
+            padding: 2px 6px;
+            border-radius: 6px;
+            font-size: 9px;
+            font-weight: 700;
+        }
+
         .water-grid { display: flex; gap: 6px; justify-content: center; margin: 12px 0; }
         .glass-item { font-size: 24px; opacity: 0.3; cursor: pointer; transition: transform 0.2s; }
         .glass-item.active { opacity: 1; transform: scale(1.2); }
@@ -239,8 +248,8 @@
                         </div>
                     </div>
 
-                    <div style="font-size: 13px; font-weight: 700;">Adımları Puana Dönüştür!</div>
-                    <div style="font-size: 10px; color: #94a3b8;" id="multiplierText">Seviye Çarpanınız: 1.0x</div>
+                    <div style="font-size: 13px; font-weight: 700;">Adımları YürüPara'ya Çevir!</div>
+                    <div style="font-size: 10px; color: #94a3b8;" id="multiplierText">100 Adım = 10 YürüPara (YP)</div>
 
                     <div class="cap-box">
                         <div style="display:flex; justify-content:space-between; font-size:10px; color:#cbd5e1;">
@@ -260,7 +269,7 @@
                         <button class="m-btn m-btn-gold" onclick="openWheelModal()">🎡 Şans Çarkı</button>
                     </div>
 
-                    <button class="m-btn m-btn-primary" style="width:100%; margin-top:8px; font-size:14px;" onclick="convertSteps()">⚡ KASAYA AKTAR</button>
+                    <button class="m-btn m-btn-primary" style="width:100%; margin-top:8px; font-size:14px;" onclick="convertSteps()">⚡ YÜRÜPARA'YA ÇEVİR</button>
                 </div>
 
                 <div class="mobile-stats-grid">
@@ -272,10 +281,10 @@
                         </div>
                     </div>
                     <div class="m-stat-card">
-                        <div class="m-stat-icon">💰</div>
+                        <div class="m-stat-icon">💳</div>
                         <div>
-                            <div class="m-stat-title">Bakiye</div>
-                            <div class="m-stat-value" id="userPoints">0 AP</div>
+                            <div class="m-stat-title">YürüPara Bakiyem</div>
+                            <div class="m-stat-value" id="userPoints">0 YP</div>
                         </div>
                     </div>
                     <div class="m-stat-card">
@@ -302,13 +311,13 @@
                 <div class="m-list-card" id="leaderboardContainer"></div>
             </div>
 
-            <!-- TAB 3: SAĞLIK & SU (NEW v2.5) -->
+            <!-- TAB 3: SAĞLIK & SU -->
             <div id="tabHealth" class="tab-page hidden">
                 <h3 style="font-size:15px; margin-bottom:10px;">💧 Su Takibi & Günlük Görevler</h3>
                 
                 <div class="m-list-card" style="text-align:center;">
                     <strong>💧 Günlük 2 Litre Su Takibi</strong>
-                    <p style="font-size:11px; color:#94a3b8; margin-top:2px;">İçtiğin her bardak için tıkla! 8 bardağa ulaşınca +50 AP kazan!</p>
+                    <p style="font-size:11px; color:#94a3b8; margin-top:2px;">İçtiğin her bardak için tıkla! 8 bardağa ulaşınca +50 YürüPara kazan!</p>
                     <div class="water-grid" id="waterGrid">
                         <span class="glass-item" onclick="addWater(1)">🥛</span>
                         <span class="glass-item" onclick="addWater(2)">🥛</span>
@@ -324,62 +333,66 @@
 
                 <div class="m-list-card">
                     <strong style="font-size:13px; display:block;">😴 8 Saat Uyu Görevi</strong>
-                    <p style="font-size:11px; color:#94a3b8; margin:2px 0 8px 0;">Düzenli uyku hedefini tamamla, puanı kap!</p>
-                    <button class="m-btn m-btn-blue" style="width:100%; font-size:11px;" onclick="completeQuest('sleep')">+100 AP Kazan</button>
+                    <p style="font-size:11px; color:#94a3b8; margin:2px 0 8px 0;">Düzenli uyku hedefini tamamla!</p>
+                    <button class="m-btn m-btn-blue" style="width:100%; font-size:11px;" onclick="completeQuest('sleep')">+100 YürüPara Kazan</button>
                 </div>
 
                 <div class="m-list-card">
                     <strong style="font-size:13px; display:block;">🏃 30 Dk Antrenman Yap Görevi</strong>
                     <p style="font-size:11px; color:#94a3b8; margin:2px 0 8px 0;">Egzersizini tamamla, formunu koru!</p>
-                    <button class="m-btn m-btn-primary" style="width:100%; font-size:11px;" onclick="completeQuest('workout')">+150 AP Kazan</button>
+                    <button class="m-btn m-btn-primary" style="width:100%; font-size:11px;" onclick="completeQuest('workout')">+150 YürüPara Kazan</button>
                 </div>
             </div>
 
-            <!-- TAB 5: BAĞIŞ -->
+            <!-- TAB 4: BAĞIŞ -->
             <div id="tabCharity" class="tab-page hidden">
                 <h3 style="font-size:15px; margin-bottom:10px;">🐾 Sosyal Bağış (Help Steps)</h3>
                 
                 <div class="m-list-card">
                     <div style="font-size:24px;">🐶</div>
                     <strong style="font-size:14px; display:block;">HAAP Barınak Mama Bağışı</strong>
-                    <p style="font-size:11px; color:#94a3b8; margin:2px 0 8px 0;">100 AP = 1 Kg Mama</p>
-                    <button class="m-btn m-btn-primary" style="width:100%; font-size:11px;" onclick="donateCharity('HAAP Barınak Mama Bağışı', 100)">100 AP Bağışla</button>
+                    <p style="font-size:11px; color:#94a3b8; margin:2px 0 8px 0;">100 YP = 1 Kg Mama</p>
+                    <button class="m-btn m-btn-primary" style="width:100%; font-size:11px;" onclick="donateCharity('HAAP Barınak Mama Bağışı', 100)">100 YP Bağışla</button>
                 </div>
 
                 <div class="m-list-card">
                     <div style="font-size:24px;">🌲</div>
                     <strong style="font-size:14px; display:block;">TEMA Geleceğe Nefes Fidanı</strong>
-                    <p style="font-size:11px; color:#94a3b8; margin:2px 0 8px 0;">250 AP = 1 Adet Fidan</p>
-                    <button class="m-btn m-btn-primary" style="width:100%; font-size:11px;" onclick="donateCharity('TEMA Fidan Bağışı', 250)">250 AP Bağışla</button>
+                    <p style="font-size:11px; color:#94a3b8; margin:2px 0 8px 0;">250 YP = 1 Adet Fidan</p>
+                    <button class="m-btn m-btn-primary" style="width:100%; font-size:11px;" onclick="donateCharity('TEMA Fidan Bağışı', 250)">250 YP Bağışla</button>
                 </div>
 
                 <div class="m-list-card">
                     <div style="font-size:24px;">❤️</div>
                     <strong style="font-size:14px; display:block;">LÖSEV Çocuk Sağlık Paketi</strong>
-                    <p style="font-size:11px; color:#94a3b8; margin:2px 0 8px 0;">500 AP = Sağlık Desteği</p>
-                    <button class="m-btn m-btn-primary" style="width:100%; font-size:11px;" onclick="donateCharity('LÖSEV Çocuk Sağlık Paketi', 500)">500 AP Bağışla</button>
+                    <p style="font-size:11px; color:#94a3b8; margin:2px 0 8px 0;">500 YP = Sağlık Desteği</p>
+                    <button class="m-btn m-btn-primary" style="width:100%; font-size:11px;" onclick="donateCharity('LÖSEV Çocuk Sağlık Paketi', 500)">500 YP Bağışla</button>
                 </div>
 
                 <div class="m-list-card">
                     <div style="font-size:24px;">📚</div>
                     <strong style="font-size:14px; display:block;">Köy Okulları Kitap Seti</strong>
-                    <p style="font-size:11px; color:#94a3b8; margin:2px 0 8px 0;">350 AP = Eğitime Destek</p>
-                    <button class="m-btn m-btn-primary" style="width:100%; font-size:11px;" onclick="donateCharity('Köy Okulları Kitap Seti', 350)">350 AP Bağışla</button>
+                    <p style="font-size:11px; color:#94a3b8; margin:2px 0 8px 0;">350 YP = Eğitime Destek</p>
+                    <button class="m-btn m-btn-primary" style="width:100%; font-size:11px;" onclick="donateCharity('Köy Okulları Kitap Seti', 350)">350 YP Bağışla</button>
                 </div>
             </div>
 
-            <!-- TAB 6: MAĞAZA -->
+            <!-- TAB 5: %100 DİJİTAL MAĞAZA -->
             <div id="tabStore" class="tab-page hidden">
-                <h3 style="font-size:15px; margin-bottom:10px;">🛒 Ödül Mağazası</h3>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                    <h3 style="font-size:15px;">🛒 Dijital Ödül Mağazası</h3>
+                    <span class="digital-tag">⚡ %100 Dijital Anında Teslim</span>
+                </div>
+                <p style="font-size:11px; color:#94a3b8; margin-bottom:12px;">Tüm ürünler anında kopyalanabilir dijital kod ve E-Pin olarak teslim edilir. Fiziki kargo yoktur.</p>
                 <div id="storeContainer"></div>
             </div>
 
-            <!-- TAB 7: PROFİL -->
+            <!-- TAB 6: PROFİL -->
             <div id="tabProfile" class="tab-page hidden">
-                <h3 style="font-size:15px; margin-bottom:10px;">👤 Profil & Kuponlarım</h3>
-                
+                <h3 style="font-size:15px; margin-bottom:10px;">👤 Profil & Dijital Kodlarım</h3>
+
                 <div class="m-list-card">
-                    <strong style="font-size:13px; color:#c084fc;">🎁 Hediye Kodlarım</strong>
+                    <strong style="font-size:13px; color:#c084fc;">🎁 Aldığım Dijital Kuantum & E-Pin Kodları</strong>
                     <div id="myClaimsList" style="margin-top:6px;"></div>
                 </div>
 
@@ -394,7 +407,7 @@
             <button class="nav-item" onclick="switchNav('leaderboard')"><span class="nav-icon">🏆</span><span>Liderlik</span></button>
             <button class="nav-item" onclick="switchNav('health')"><span class="nav-icon">💧</span><span>Sağlık</span></button>
             <button class="nav-item" onclick="switchNav('charity')"><span class="nav-icon">🐾</span><span>Bağış</span></button>
-            <button class="nav-item" onclick="switchNav('store')"><span class="nav-icon">🛒</span><span>Mağaza</span></button>
+            <button class="nav-item" onclick="switchNav('store')"><span class="nav-icon">🛒</span><span>Dijital Mağaza</span></button>
             <button class="nav-item" onclick="switchNav('profile')"><span class="nav-icon">👤</span><span>Profil</span></button>
         </div>
 
@@ -431,7 +444,7 @@
                 if (!res.ok) { logout(); return; }
                 const data = await res.json();
                 updateUI(data.user);
-                renderClaimsAndRaffles(data.claims, data.user.raffles);
+                renderClaims(data.claims);
             } catch (err) {}
         }
 
@@ -440,7 +453,7 @@
             document.getElementById('streakVal').textContent = u.streak || 1;
             document.getElementById('totalSteps').textContent = u.steps.toLocaleString('tr-TR');
             document.getElementById('unconvertedSteps').textContent = u.unconvertedSteps.toLocaleString('tr-TR');
-            document.getElementById('userPoints').textContent = `${u.points.toLocaleString('tr-TR')} AP`;
+            document.getElementById('userPoints').textContent = `${u.points.toLocaleString('tr-TR')} YP`;
             document.getElementById('userCalories').textContent = `${u.calories} kcal`;
             document.getElementById('statLevel').textContent = `Lv. ${u.level || 1}`;
 
@@ -456,7 +469,6 @@
             document.getElementById('capFill').style.width = `${capPct}%`;
             document.getElementById('capText').textContent = `${(u.todayConvertedSteps || 0).toLocaleString('tr-TR')} / 15.000`;
 
-            // Water glasses
             const gCount = u.waterGlasses || 0;
             document.getElementById('waterText').textContent = `${gCount} / 8 Bardak İçildi`;
             const glasses = document.querySelectorAll('.glass-item');
@@ -556,38 +568,6 @@
             } catch (err) {}
         }
 
-        async function fetchRaffles() {
-            try {
-                const res = await fetch('/api/v2/raffles');
-                const data = await res.json();
-                const container = document.getElementById('rafflesContainer');
-                container.innerHTML = '';
-                data.raffles.forEach(r => {
-                    container.innerHTML += `
-                        <div class="m-list-card">
-                            <div style="font-size:24px;">${r.icon || '📱'}</div>
-                            <strong style="font-size:14px; display:block; margin-top:2px;">${r.title}</strong>
-                            <p style="font-size:11px; color:#94a3b8; margin:2px 0 8px 0;">${r.description}</p>
-                            <button class="m-btn m-btn-gold" style="width:100%; font-size:11px;" onclick="buyRaffle('${r._id}')">🎟️ ${r.ticketCost} AP ile Bilet Al</button>
-                        </div>
-                    `;
-                });
-            } catch (err) {}
-        }
-
-        async function buyRaffle(raffleId) {
-            try {
-                const res = await fetch('/api/v2/raffles/buy', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                    body: JSON.stringify({ raffleId })
-                });
-                const data = await res.json();
-                showAlert(data.message || data.error);
-                fetchUserData();
-            } catch (err) {}
-        }
-
         async function donateCharity(charityName, pointsToDonate) {
             try {
                 const res = await fetch('/api/v2/donate', {
@@ -611,10 +591,14 @@
                     container.innerHTML += `
                         <div class="m-list-card" style="display:flex; justify-content:space-between; align-items:center;">
                             <div>
-                                <strong style="font-size:13px;">${r.icon || '🎁'} ${r.title}</strong>
-                                <div style="color:#34d399; font-weight:800; font-size:11px; margin-top:2px;">💰 ${r.pointsCost} AP</div>
+                                <div style="display:flex; align-items:center; gap:6px;">
+                                    <strong style="font-size:13px;">${r.icon || '🎁'} ${r.title}</strong>
+                                    <span class="digital-tag">Dijital Kodu</span>
+                                </div>
+                                <span style="font-size:10px; color:#94a3b8; display:block; margin-top:2px;">${r.description}</span>
+                                <div style="color:#34d399; font-weight:800; font-size:12px; margin-top:4px;">💳 ${r.pointsCost} YürüPara</div>
                             </div>
-                            <button class="m-btn m-btn-primary" style="padding:6px 12px; font-size:10px;" onclick="claimReward('${r._id}')">Al</button>
+                            <button class="m-btn m-btn-primary" style="padding:6px 12px; font-size:11px;" onclick="claimReward('${r._id}')">Kodu Al</button>
                         </div>
                     `;
                 });
@@ -634,28 +618,15 @@
             } catch (err) {}
         }
 
-        function renderClaimsAndRaffles(claims, raffles) {
-            const rList = document.getElementById('myRafflesList');
-            rList.innerHTML = raffles && raffles.length ? '' : '<p style="font-size:11px; color:#94a3b8;">Biletiniz yok.</p>';
-            if (raffles) {
-                raffles.forEach(rf => {
-                    rList.innerHTML += `
-                        <div style="background:rgba(255,255,255,0.05); padding:8px; border-radius:10px; margin-top:4px; display:flex; justify-content:space-between; font-size:11px;">
-                            <span>${rf.raffleTitle}</span>
-                            <span style="color:#fbbf24; font-family:monospace; font-weight:700;">🎟️ ${rf.ticketCode}</span>
-                        </div>
-                    `;
-                });
-            }
-
+        function renderClaims(claims) {
             const cList = document.getElementById('myClaimsList');
-            cList.innerHTML = claims && claims.length ? '' : '<p style="font-size:11px; color:#94a3b8;">Kuponunuz yok.</p>';
+            cList.innerHTML = claims && claims.length ? '' : '<p style="font-size:11px; color:#94a3b8;">Henüz dijital kuponunuz yok.</p>';
             if (claims) {
                 claims.forEach(c => {
                     cList.innerHTML += `
                         <div style="background:rgba(255,255,255,0.05); padding:8px; border-radius:10px; margin-top:4px; display:flex; justify-content:space-between; font-size:11px;">
                             <span>${c.rewardTitle}</span>
-                            <span style="color:#c084fc; font-family:monospace; font-weight:700;">📋 ${c.code}</span>
+                            <span style="color:#c084fc; font-family:monospace; font-weight:700;" onclick="navigator.clipboard.writeText('${c.code}'); showAlert('Kod kopyalandı!')" title="Kopyalamak için tıkla">📋 ${c.code}</span>
                         </div>
                     `;
                 });
@@ -675,14 +646,14 @@
             } else if (tab === 'health') {
                 document.querySelectorAll('.nav-item')[2].classList.add('active');
                 document.getElementById('tabHealth').classList.remove('hidden');
-            } else if (tab === 'raffle') {
-                document.querySelectorAll('.nav-item')[3].classList.add('active');
-                document.getElementById('tabRaffle').classList.remove('hidden');
             } else if (tab === 'charity') {
-                document.querySelectorAll('.nav-item')[4].classList.add('active');
+                document.querySelectorAll('.nav-item')[3].classList.add('active');
                 document.getElementById('tabCharity').classList.remove('hidden');
+            } else if (tab === 'store') {
+                document.querySelectorAll('.nav-item')[4].classList.add('active');
+                document.getElementById('tabStore').classList.remove('hidden');
             } else if (tab === 'profile') {
-                document.querySelectorAll('.nav-item')[5]?.classList.add('active');
+                document.querySelectorAll('.nav-item')[5].classList.add('active');
                 document.getElementById('tabProfile').classList.remove('hidden');
             }
         }
@@ -690,7 +661,6 @@
         // Init
         fetchUserData();
         fetchLeaderboard();
-        fetchRaffles();
         fetchRewards();
     </script>
 </body>

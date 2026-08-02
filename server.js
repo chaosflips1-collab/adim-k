@@ -9,7 +9,6 @@ const User = require('./models/User');
 const Reward = require('./models/Reward');
 const Claim = require('./models/Claim');
 const Donation = require('./models/Donation');
-const Raffle = require('./models/Raffle');
 const authMiddleware = require('./middleware/auth');
 const { JWT_SECRET } = authMiddleware;
 
@@ -27,41 +26,29 @@ mongoose.connect(MONGO_URI)
     })
     .catch((err) => console.log('MongoDB bağlantı hatası:', err));
 
-// Demo Verilerini Tohumlama (Seed)
+// Demo Verilerini Tohumlama (Seed) - %100 DİJİTAL ÜRÜNLER & YÜRÜPARA
 async function seedDemoData() {
     try {
-        // 1. Ödüller
-        const rewardCount = await Reward.countDocuments();
-        if (rewardCount === 0) {
-            await Reward.insertMany([
-                { title: 'Starbucks Kahve Kuponu', description: 'Tüm küçük boy kahvelerde geçerli hediye kodu.', pointsCost: 150, category: 'Yiyecek & İçecek', code: 'STB-PRO-8842', icon: '☕', stock: 50 },
-                { title: 'Trendyol 200 TL Hediye Çeki', description: 'Tüm kategorilerde geçerli alışveriş kuponu.', pointsCost: 800, category: 'Alışveriş', code: 'TRND-200-PRO', icon: '🛍️', stock: 20 },
-                { title: 'Steam 100 TL Cüzdan Kodu', description: 'Steam hesabınıza bakiye yükleyin.', pointsCost: 650, category: 'Oyun', code: 'STEAM-100TL-PRO', icon: '🎮', stock: 25 },
-                { title: 'Valorant 1000 VP', description: 'Valorant mağazasında geçerli Points kodu.', pointsCost: 600, category: 'Oyun', code: 'VALO-1000VP-PRO', icon: '🎯', stock: 30 }
-            ]);
-        }
+        // Mağazadaki eski verileri %100 dijital ürünlerle yenileyelim
+        await Reward.deleteMany({});
+        await Reward.insertMany([
+            { title: 'Starbucks Dijital Kahve Kodu', description: 'Tüm mağazalarda kasada gösterilebilir dijital e-kod.', pointsCost: 150, category: 'Dijital İçecek Kodu', code: 'STB-DIGITAL-8842', icon: '☕', stock: 100 },
+            { title: 'Trendyol 200 TL Dijital Hediye Kodu', description: 'Trendyol cüzdanım alanında anında aktif olan hediye kodu.', pointsCost: 800, category: 'Dijital Alışveriş Kodu', code: 'TRND-200-DIGI', icon: '🛍️', stock: 50 },
+            { title: 'Steam 100 TL Dijital E-Pin Kodu', description: 'Steam cüzdanınıza anında eklenen dijital E-Pin kodu.', pointsCost: 650, category: 'Dijital Oyun Kodu', code: 'STEAM-100-DIGI', icon: '🎮', stock: 60 },
+            { title: 'Valorant 1000 VP Dijital Kodu', description: 'Riot Games mağazasında geçerli dijital VP kodu.', pointsCost: 600, category: 'Dijital Oyun Kodu', code: 'VALO-1000VP-DIGI', icon: '🎯', stock: 45 },
+            { title: 'Spotify Premium 1 Ay Dijital Kod', description: '1 Aylık Bireysel Spotify üyelik dijital aktifleştirme kodu.', pointsCost: 350, category: 'Dijital Üyelik Kodu', code: 'SPOTIFY-1MO-DIGI', icon: '🎵', stock: 80 },
+            { title: 'Google Play 100 TL Dijital Kodu', description: 'Play Store hesabınıza bakiye ekleyen dijital kod.', pointsCost: 500, category: 'Dijital Market Kodu', code: 'GPLAY-100-DIGI', icon: '📱', stock: 50 }
+        ]);
 
-        // 2. Çekilişler (Raffling)
-        const raffleCount = await Raffle.countDocuments();
-        if (raffleCount === 0) {
-            await Raffle.insertMany([
-                { title: 'iPhone 16 Pro 256GB Çekilişi', description: 'Sadece 25 AP vererek dev iPhone çekilişine katılın!', ticketCost: 25, icon: '📱', endDate: '31 Ağustos 2026' },
-                { title: 'PlayStation 5 Slim Çekilişi', description: '50 AP vererek oyun konsolu çekiliş biletinizi alın!', ticketCost: 50, icon: '🎮', endDate: '15 Eylül 2026' },
-                { title: 'Apple AirPods Pro 2 Çekilişi', description: '20 AP ile kablosuz kulaklık çekilişine dahil olun!', ticketCost: 20, icon: '🎧', endDate: '30 Ağustos 2026' }
-            ]);
-            console.log('v2.5 Çekiliş verileri yüklendi.');
-        }
-
-        // 3. Demo Liderlik Tablosu
+        // Demo Liderlik Tablosu
         const userCount = await User.countDocuments();
         if (userCount < 5) {
             const dummyPassword = await bcrypt.hash('123456', 10);
-            const dummyUsers = [
+            await User.insertMany([
                 { name: 'Ahmet Yılmaz 🥇', email: 'ahmet@adimkasasi.com', password: dummyPassword, steps: 142500, points: 1425, calories: 5700, streak: 12, level: 4, multiplier: 2.0, role: 'user' },
                 { name: 'Zeynep Kaya 🥈', email: 'zeynep@adimkasasi.com', password: dummyPassword, steps: 118400, points: 1184, calories: 4736, streak: 9, level: 4, multiplier: 2.0, role: 'user' },
                 { name: 'Burak Demir 🥉', email: 'burak@adimkasasi.com', password: dummyPassword, steps: 95200, points: 952, calories: 3808, streak: 7, level: 3, multiplier: 1.5, role: 'user' }
-            ];
-            await User.insertMany(dummyUsers);
+            ]);
         }
     } catch (err) {
         console.error('Seed hatası:', err);
@@ -72,7 +59,6 @@ function getTodayStr() {
     return new Date().toISOString().split('T')[0];
 }
 
-// Seviye ve Çarpan Hesabı
 function calculateLevel(steps) {
     if (steps >= 100000) return { level: 4, title: 'Efsane', multiplier: 2.0 };
     if (steps >= 50000) return { level: 3, title: 'Maratoncu', multiplier: 1.5 };
@@ -82,7 +68,7 @@ function calculateLevel(steps) {
 
 // --- API ROTALARI ---
 
-// 1. Kayıt Ol (v2.5)
+// 1. Kayıt Ol
 app.post('/api/v2/register', async (req, res) => {
     try {
         const { name, email, password } = req.body;
@@ -115,7 +101,7 @@ app.post('/api/v2/register', async (req, res) => {
     }
 });
 
-// 2. Giriş Yap (v2.5)
+// 2. Giriş Yap
 app.post('/api/v2/login', async (req, res) => {
     try {
         const { email, password } = req.body;
@@ -183,7 +169,7 @@ app.post('/api/v2/auth/google', async (req, res) => {
     }
 });
 
-// 3. Me (Profil & Seviye Detayı)
+// 3. Me
 app.get('/api/v2/user/me', authMiddleware, async (req, res) => {
     try {
         const user = await User.findById(req.user.id).select('-password');
@@ -192,7 +178,6 @@ app.get('/api/v2/user/me', authMiddleware, async (req, res) => {
         const claims = await Claim.find({ userId: user._id }).sort({ claimedAt: -1 });
         const donations = await Donation.find({ userId: user._id }).sort({ donatedAt: -1 });
 
-        // Seviye Güncellemesi
         const lvlData = calculateLevel(user.steps);
         user.level = lvlData.level;
         user.multiplier = lvlData.multiplier;
@@ -222,19 +207,18 @@ app.post('/api/v2/steps/add', authMiddleware, async (req, res) => {
         user.unconvertedSteps += amount;
         user.calories += Math.round(amount * 0.04);
 
-        // Seviye Kontrolü
         const lvlData = calculateLevel(user.steps);
         user.level = lvlData.level;
         user.multiplier = lvlData.multiplier;
 
         await user.save();
-        res.json({ message: `${amount} adım senkronize edildi! (Seviye: ${lvlData.title})`, user });
+        res.json({ message: `${amount} adım senkronize edildi!`, user });
     } catch (err) {
         res.status(500).json({ error: "Adım ekleme hatası." });
     }
 });
 
-// 5. Adımları Dönüştür (Seviye Çarpanı + 2x Bonus)
+// 5. Adımları YürüPara'ya Çevir (Seviye Çarpanlı)
 app.post('/api/v2/steps/convert', authMiddleware, async (req, res) => {
     try {
         const isDouble = req.body.isDouble === true;
@@ -257,12 +241,10 @@ app.post('/api/v2/steps/convert', authMiddleware, async (req, res) => {
         }
 
         const convertAmount = Math.floor(availableToConvert / 100) * 100;
-        
-        // Seviye Çarpanlı Puan Hesabı!
         const lvlData = calculateLevel(user.steps);
         let earnedPoints = (convertAmount / 100) * 10 * lvlData.multiplier;
 
-        if (isDouble) earnedPoints *= 2; // 2x Sponsor Çarpanı
+        if (isDouble) earnedPoints *= 2; // 2x Sponsorlu Bonus
 
         user.unconvertedSteps -= convertAmount;
         user.todayConvertedSteps += convertAmount;
@@ -272,7 +254,7 @@ app.post('/api/v2/steps/convert', authMiddleware, async (req, res) => {
 
         await user.save();
         res.json({
-            message: `🎉 ${convertAmount} adım dönüştürüldü! (${lvlData.multiplier}x Seviye Çarpanı ile ${Math.round(earnedPoints)} AP kazandınız)`,
+            message: `🎉 ${convertAmount} adım dönüştürüldü! (${lvlData.multiplier}x Seviye Çarpanı ile ${Math.round(earnedPoints)} YürüPara kazandınız)`,
             earnedPoints,
             user
         });
@@ -281,7 +263,7 @@ app.post('/api/v2/steps/convert', authMiddleware, async (req, res) => {
     }
 });
 
-// 6. SU TAKİBİ (Water Tracker)
+// 6. SU TAKİBİ
 app.post('/api/v2/health/water', authMiddleware, async (req, res) => {
     try {
         const user = await User.findById(req.user.id);
@@ -290,8 +272,8 @@ app.post('/api/v2/health/water', authMiddleware, async (req, res) => {
         let bonusMsg = `💧 1 Bardak Su İçildi! (${user.waterGlasses}/8 Bardak)`;
         if (user.waterGlasses === 8 && !user.completedQuests.includes('water')) {
             user.completedQuests.push('water');
-            user.points += 50; // 50 AP Hedef Bonusu
-            bonusMsg = "🎉 Tebrikler! Günlük 2 Litre Su Hedefine ulaştınız ve +50 AdımPuan kazandınız!";
+            user.points += 50;
+            bonusMsg = "🎉 Tebrikler! Günlük 2 Litre Su Hedefine ulaştınız ve +50 YürüPara kazandınız!";
         }
 
         await user.save();
@@ -301,10 +283,10 @@ app.post('/api/v2/health/water', authMiddleware, async (req, res) => {
     }
 });
 
-// 7. GÜNLÜK SAĞLIK GÖREVLERİ (Health Quests)
+// 7. GÜNLÜK SAĞLIK GÖREVLERİ
 app.post('/api/v2/health/quest', authMiddleware, async (req, res) => {
     try {
-        const { questType } = req.body; // 'sleep' or 'workout'
+        const { questType } = req.body;
         const user = await User.findById(req.user.id);
 
         if (user.completedQuests.includes(questType)) {
@@ -328,52 +310,13 @@ app.post('/api/v2/health/quest', authMiddleware, async (req, res) => {
         user.points += rewardPoints;
 
         await user.save();
-        res.json({ message: `🌟 Tebrikler! "${title}" tamamlandı ve +${rewardPoints} AdımPuan kazanıldı!`, points: user.points });
+        res.json({ message: `🌟 Tebrikler! "${title}" tamamlandı ve +${rewardPoints} YürüPara kazanıldı!`, points: user.points });
     } catch (err) {
         res.status(500).json({ error: "Görev hatası." });
     }
 });
 
-// 8. ÇEKİLİŞLER (Raffles) & BİLET ALMA
-app.get('/api/v2/raffles', async (req, res) => {
-    try {
-        const raffles = await Raffle.find();
-        res.json({ raffles });
-    } catch (err) {
-        res.status(500).json({ error: "Çekilişler getirilemedi." });
-    }
-});
-
-app.post('/api/v2/raffles/buy', authMiddleware, async (req, res) => {
-    try {
-        const { raffleId } = req.body;
-        const raffle = await Raffle.findById(raffleId);
-        if (!raffle) return res.status(404).json({ error: "Çekiliş bulunamadı." });
-
-        const user = await User.findById(req.user.id);
-        if (user.points < raffle.ticketCost) {
-            return res.status(400).json({ error: `Yetersiz bakiye! Bilet fiyatı: ${raffle.ticketCost} AP` });
-        }
-
-        user.points -= raffle.ticketCost;
-        raffle.totalTickets += 1;
-
-        const ticketCode = `TICKET-${Math.floor(100000 + Math.random() * 900000)}`;
-        user.raffles.push({
-            raffleTitle: raffle.title,
-            ticketCode
-        });
-
-        await user.save();
-        await raffle.save();
-
-        res.json({ message: `🎟️ Tebrikler! "${raffle.title}" için çekiliş biletiniz alındı. Bilet No: ${ticketCode}`, ticketCode, points: user.points });
-    } catch (err) {
-        res.status(500).json({ error: "Bilet alma hatası." });
-    }
-});
-
-// 9. Şans Çarkı, Liderlik & Bağış
+// 8. Şans Çarkı, Liderlik & Bağış
 app.post('/api/v2/wheel/spin', authMiddleware, async (req, res) => {
     try {
         const user = await User.findById(req.user.id);
@@ -390,7 +333,7 @@ app.post('/api/v2/wheel/spin', authMiddleware, async (req, res) => {
         user.lastWheelSpinDate = today;
         await user.save();
 
-        res.json({ message: `🎡 Çark döndü ve +${wonPoints} AdımPuan kazandınız!`, wonPoints, user });
+        res.json({ message: `🎡 Çark döndü ve +${wonPoints} YürüPara kazandınız!`, wonPoints, user });
     } catch (err) {
         res.status(500).json({ error: "Çark hatası." });
     }
@@ -427,12 +370,13 @@ app.post('/api/v2/donate', authMiddleware, async (req, res) => {
         await user.save();
         await donation.save();
 
-        res.json({ message: `❤️ "${charityName}" için ${points} AP bağışlandı. Teşekkürler!`, user });
+        res.json({ message: `❤️ "${charityName}" için ${points} YürüPara bağışlandı. Teşekkürler!`, user });
     } catch (err) {
         res.status(500).json({ error: "Bağış hatası." });
     }
 });
 
+// 9. DİJİTAL MAĞAZA VE KOD TESLİMATI
 app.get('/api/v2/rewards', async (req, res) => {
     try {
         const rewards = await Reward.find().sort({ pointsCost: 1 });
@@ -444,22 +388,34 @@ app.post('/api/v2/rewards/claim', authMiddleware, async (req, res) => {
     try {
         const { rewardId } = req.body;
         const reward = await Reward.findById(rewardId);
-        if (!reward || reward.stock <= 0) return res.status(400).json({ error: "Stok yok." });
+        if (!reward || reward.stock <= 0) return res.status(400).json({ error: "Stokta yok." });
 
         const user = await User.findById(req.user.id);
-        if (user.points < reward.pointsCost) return res.status(400).json({ error: "Yetersiz Bakiye!" });
+        if (user.points < reward.pointsCost) return res.status(400).json({ error: "Yetersiz YürüPara Bakiyesi!" });
 
         user.points -= reward.pointsCost;
         reward.stock -= 1;
-        const uniqueCode = `${reward.code}-${Math.floor(1000 + Math.random() * 9000)}`;
 
-        const claim = new Claim({ userId: user._id, rewardTitle: reward.title, pointsSpent: reward.pointsCost, code: uniqueCode });
+        // Dijital E-Pin / Kupon Kodu Üretimi
+        const uniqueDigitalCode = `${reward.code}-${Math.floor(100000 + Math.random() * 900000)}`;
+
+        const claim = new Claim({ 
+            userId: user._id, 
+            rewardTitle: reward.title, 
+            pointsSpent: reward.pointsCost, 
+            code: uniqueDigitalCode 
+        });
+
         await user.save();
         await reward.save();
         await claim.save();
 
-        res.json({ message: `🎉 Kodunuz: ${uniqueCode}`, code: uniqueCode, user });
-    } catch (err) { res.status(500).json({ error: "Claim hatası." }); }
+        res.json({ 
+            message: `🎉 Tebrikler! Dijital kodunuz anında hazırlandı. Kuponlarım sekmesinden kopyalayabilirsiniz.`, 
+            code: uniqueDigitalCode, 
+            user 
+        });
+    } catch (err) { res.status(500).json({ error: "Dijital kod alma hatası." }); }
 });
 
 const PORT = process.env.PORT || 3001;
