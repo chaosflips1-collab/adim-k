@@ -51,29 +51,34 @@ async function seedDemoData() {
         }
 
         // Demo Admin Hesabı
-        const adminUser = await User.findOne({ email: 'admin@adimkasasi.com' });
+        let adminUser = await User.findOne({ email: 'admin@adimkasasi.com' });
         if (!adminUser) {
             const adminPassword = await bcrypt.hash('admin123456', 10);
-            await User.create({
+            adminUser = await User.create({
                 name: 'Sistem Yöneticisi 👑',
                 email: 'admin@adimkasasi.com',
                 password: adminPassword,
                 role: 'admin',
-                steps: 500000,
-                points: 9999
+                steps: 0,
+                unconvertedSteps: 0,
+                points: 0,
+                calories: 0
             });
             console.log('v2.6 Admin hesabı oluşturuldu: admin@adimkasasi.com / admin123456');
+        } else {
+            adminUser.steps = 0;
+            adminUser.unconvertedSteps = 0;
+            adminUser.points = 0;
+            adminUser.calories = 0;
+            await adminUser.save();
         }
 
-        const userCount = await User.countDocuments();
-        if (userCount < 4) {
-            const dummyPassword = await bcrypt.hash('123456', 10);
-            await User.insertMany([
-                { name: 'Ahmet Yılmaz 🥇', email: 'ahmet@adimkasasi.com', password: dummyPassword, steps: 142500, points: 18.5, calories: 5700, streak: 12, level: 4, multiplier: 2.0, role: 'user' },
-                { name: 'Zeynep Kaya 🥈', email: 'zeynep@adimkasasi.com', password: dummyPassword, steps: 118400, points: 14.0, calories: 4736, streak: 9, level: 4, multiplier: 2.0, role: 'user' },
-                { name: 'Burak Demir 🥉', email: 'burak@adimkasasi.com', password: dummyPassword, steps: 95200, points: 9.5, calories: 3808, streak: 7, level: 3, multiplier: 1.5, role: 'user' }
-            ]);
-        }
+        // Sıfırlama Temizliği: Tüm demo adımları ve puanları 0 yapalım (Gerçek kullanıcılar için hazır başlasın)
+        await User.updateMany(
+            { role: { $ne: 'admin' } },
+            { $set: { steps: 0, unconvertedSteps: 0, todayConvertedSteps: 0, points: 0, calories: 0, level: 1, multiplier: 1.0 } }
+        );
+        console.log('Tüm veritabanı adım ve puan istatistikleri 0 olarak sıfırlandı.');
     } catch (err) {
         console.error('Seed hatası:', err);
     }
