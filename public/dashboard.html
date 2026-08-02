@@ -405,6 +405,13 @@
                 </div>
 
                 <div class="m-list-card">
+                    <strong style="font-size:13px; color:#34d399;">🥗 Kişiye Özel Diyetisyen Planım</strong>
+                    <div style="font-size:11px; color:#94a3b8; margin:4px 0 8px 0;">Mağazadan YürüPara ile kilit açıldıktan sonra özel diyet listeniz burada belirir.</div>
+                    <button class="m-btn m-btn-primary" style="width:100%; font-size:11px;" onclick="fetchPersonalizedDiet()">🥗 Kişiye Özel Diyet Planımı Görüntüle</button>
+                    <div id="dietContainer" style="margin-top:10px; display:none;"></div>
+                </div>
+
+                <div class="m-list-card">
                     <strong style="font-size:13px; color:#c084fc;">🎁 Aldığım Dijital Kodlar & E-Pinler</strong>
                     <div id="myClaimsList" style="margin-top:6px;"></div>
                 </div>
@@ -686,6 +693,44 @@
             } else if (tab === 'profile') {
                 document.querySelectorAll('.nav-item')[5].classList.add('active');
                 document.getElementById('tabProfile').classList.remove('hidden');
+            }
+        }
+
+        async function fetchPersonalizedDiet() {
+            try {
+                const res = await fetch('/api/v2/diet/get-plan', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                const d = data.dietPlan;
+                const container = document.getElementById('dietContainer');
+                container.style.display = 'block';
+                
+                let html = `
+                    <div style="background:rgba(52, 211, 153, 0.1); border:1px solid rgba(52, 211, 153, 0.3); padding:10px; border-radius:12px; font-size:11px;">
+                        <div style="font-weight:800; color:#34d399; font-size:12px; margin-bottom:4px;">📊 Metabolizma Analiziniz</div>
+                        <div>Bazal Metabolizma (BMR): <strong>${d.userStats.bmr} kcal</strong></div>
+                        <div>Günlük Hedef Kalori: <strong>${d.userStats.targetDailyCalorie} kcal</strong> (Yağ Yakım)</div>
+                        <div style="margin-top:6px; font-size:10px; color:#cbd5e1;">💧 Su Hedefi: ${d.waterTarget}</div>
+                    </div>
+                    <div style="margin-top:8px;">
+                `;
+
+                d.meals.forEach(m => {
+                    html += `
+                        <div style="background:rgba(255,255,255,0.05); padding:8px; border-radius:10px; margin-top:6px;">
+                            <strong style="color:#fbbf24; font-size:11px;">${m.title}</strong>
+                            <ul style="margin-left:16px; margin-top:4px; font-size:10px; color:#cbd5e1;">
+                                ${m.items.map(it => `<li>${it}</li>`).join('')}
+                            </ul>
+                        </div>
+                    `;
+                });
+
+                html += `</div>`;
+                container.innerHTML = html;
+            } catch (err) {
+                showAlert('Diyet planı yüklenemedi.');
             }
         }
 

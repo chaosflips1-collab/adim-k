@@ -31,6 +31,7 @@ async function seedDemoData() {
     try {
         await Reward.deleteMany({});
         await Reward.insertMany([
+            { title: '🥗 Kişiye Özel 7 Günlük Diyetisyen Planı', description: 'Boy ve kilonuza göre hazırlanmış bilimsel 7 günlük diyet ve beslenme programı.', pointsCost: 10, category: 'Kişisel Diyet', code: 'DIET-PLAN-CUSTOM', icon: '🥗', stock: 999 },
             { title: 'Starbucks Dijital Kahve Kodu', description: 'Tüm küçük boy kahvelerde geçerli e-kod.', pointsCost: 5, category: 'Dijital İçecek', code: 'STB-DIGITAL-8842', icon: '☕', stock: 100 },
             { title: 'Spotify Premium 1 Ay Dijital Kod', description: '1 Aylık Bireysel Spotify üyelik dijital kodu.', pointsCost: 8, category: 'Dijital Üyelik', code: 'SPOTIFY-1MO-DIGI', icon: '🎵', stock: 80 },
             { title: 'Valorant 1000 VP Dijital Kodu', description: 'Riot Games mağazasında geçerli dijital VP kodu.', pointsCost: 20, category: 'Dijital Oyun Kodu', code: 'VALO-1000VP-DIGI', icon: '🎯', stock: 45 },
@@ -147,6 +148,7 @@ app.post('/api/v2/auth/google', async (req, res) => {
             user = new User({
                 name: userName,
                 email: userEmail,
+                password: dummyPassword,
                 steps: 0,
                 unconvertedSteps: 0,
                 points: 0,
@@ -204,7 +206,7 @@ app.post('/api/v2/steps/add', authMiddleware, async (req, res) => {
 
         // BİLİMSEL KİŞİSELLEŞTİRİLMİŞ KALORİ HESAPLAMASI (ACSM Formülü)
         const userWeight = user.weight || 70;
-        const calFactorPerStep = userWeight * 0.00057; // 70kg -> ~0.04 kcal/adım, 90kg -> ~0.051 kcal/adım
+        const calFactorPerStep = userWeight * 0.00057;
         const burnedCalories = amount * calFactorPerStep;
         user.calories += Math.round(burnedCalories * 10) / 10;
 
@@ -219,7 +221,6 @@ app.post('/api/v2/steps/add', authMiddleware, async (req, res) => {
     }
 });
 
-// BOY VE KİLO GÜNCELLEME ROTASI
 app.post('/api/v2/user/update-body', authMiddleware, async (req, res) => {
     try {
         const { height, weight } = req.body;
@@ -235,7 +236,36 @@ app.post('/api/v2/user/update-body', authMiddleware, async (req, res) => {
     }
 });
 
-// 5. Adımları YürüPara'ya Çevir (ORAN: 1.000 ADIM = 0.10 YP * SEVİYE ÇARPANI)
+// BİLİMSEL KİŞİYE ÖZEL DİYET HESAPLAMA ENDPOINT'İ (Mifflin-St Jeor Formülü)
+app.post('/api/v2/diet/get-plan', authMiddleware, async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id);
+        const height = user.height || 175;
+        const weight = user.weight || 70;
+
+        // Mifflin-St Jeor BMR Formülü (Yaş varsayılan 25)
+        const bmr = Math.round(10 * weight + 6.25 * height - 5 * 25 + 5);
+        const targetDailyCalorie = Math.round(bmr + 300 - 350); // Yağ yakım hedef kalori
+
+        const dietPlan = {
+            userStats: { height, weight, bmr, targetDailyCalorie },
+            meals: [
+                { title: '🌅 Sabah (Kahvaltı)', items: [`2 Adet Haşlanmış Yumurta (${Math.round(weight*0.4)}g protein)`, '30g Lor / Beyaz Peynir', '5 Adet Az Tuzlu Yeşil Zeytin', 'Bol Salatalık, Maydanoz ve Yeşillik', '1 Dilim Tam Buğday Ekmeği'] },
+                { title: '☀️ Öğle Yemeği', items: [`${Math.round(weight * 2.2)}g Izgara Tavuk / Hindi veya Balık`, '1 Kase Yağsız Sebze Çorbası', '4 Yemek Kaşığı Haşlanmış Karabuğday / Bulgur', 'Bol Limonlu Roka & Marul Salatası'] },
+                { title: '☕ İkindi (Ara Öğün)', items: ['1 Adet Yeşil Elma', '5 Adet Çiğ Badem veya 2 Ceviz İçi', '1 Kupa Şekersiz Yeşil Çay'] },
+                { title: '🌙 Akşam Yemeği', items: ['1 Porsiyon Olive Oil Zeytinyağlı Sebze Yemeği', '1 Kase Ev Yapımı Yarım Yağlı Yoğurt', '1 Dilim Siyez / Çavdar Ekmeği'] }
+            ],
+            waterTarget: '2.5 Litre / Gün',
+            notes: 'Bu plan Mifflin-St Jeor metabolizma formülüne ve Türkiye Diyetisyenler Derneği makro oranlarına (%40 Karbonhidrat, %30 Protein, %30 Yağ) göre kişiselleştirilmiştir.'
+        };
+
+        res.json({ dietPlan });
+    } catch (err) {
+        res.status(500).json({ error: "Diyet planı oluşturulamadı." });
+    }
+});
+
+// 5. Adımları YürüPara'ya Çevir
 app.post('/api/v2/steps/convert', authMiddleware, async (req, res) => {
     try {
         const isDouble = req.body.isDouble === true;
@@ -260,14 +290,13 @@ app.post('/api/v2/steps/convert', authMiddleware, async (req, res) => {
         const convertAmount = Math.floor(availableToConvert / 1000) * 1000;
         const lvlData = calculateLevel(user.steps);
         
-        // 1.000 Adım = 0.10 YP * Level Multiplier
         let earnedPoints = (convertAmount / 1000) * 0.10 * lvlData.multiplier;
 
         if (isDouble) earnedPoints *= 2;
 
         user.unconvertedSteps -= convertAmount;
         user.todayConvertedSteps += convertAmount;
-        user.points += Math.round(earnedPoints * 100) / 100; // 2 ondalık basamak (örn: 0.10 YP)
+        user.points += Math.round(earnedPoints * 100) / 100;
         user.level = lvlData.level;
         user.multiplier = lvlData.multiplier;
 
@@ -291,7 +320,7 @@ app.post('/api/v2/health/water', authMiddleware, async (req, res) => {
         let bonusMsg = `💧 1 Bardak Su İçildi! (${user.waterGlasses}/8 Bardak)`;
         if (user.waterGlasses === 8 && !user.completedQuests.includes('water')) {
             user.completedQuests.push('water');
-            user.points += 0.15; // +0.15 YP
+            user.points += 0.15;
             bonusMsg = "🎉 Tebrikler! Günlük 2 Litre Su Hedefine ulaştınız ve +0.15 YürüPara kazandınız!";
         }
 
@@ -302,7 +331,7 @@ app.post('/api/v2/health/water', authMiddleware, async (req, res) => {
     }
 });
 
-// 7. GÜNLÜK SAĞLIK GÖREVLERİ (+0.10 YP & +0.25 YP)
+// 7. GÜNLÜK SAĞLIK GÖREVLERİ
 app.post('/api/v2/health/quest', authMiddleware, async (req, res) => {
     try {
         const { questType } = req.body;
@@ -412,8 +441,23 @@ app.post('/api/v2/rewards/claim', authMiddleware, async (req, res) => {
         if (user.points < reward.pointsCost) return res.status(400).json({ error: `Yetersiz YürüPara! Bu ürün için ${reward.pointsCost} YP gereklidir.` });
 
         user.points -= reward.pointsCost;
-        reward.stock -= 1;
 
+        // Diyet Planı Alma Özel Kod Mantığı
+        if (reward.code === 'DIET-PLAN-CUSTOM') {
+            const uniqueCode = `DIET-UNLOCK-${Math.floor(100000 + Math.random() * 900000)}`;
+            const claim = new Claim({ userId: user._id, rewardTitle: reward.title, pointsSpent: reward.pointsCost, code: uniqueCode });
+            await user.save();
+            await claim.save();
+
+            return res.json({ 
+                message: `🥗 Tebrikler! Kişiye özel diyetisyen planınız YürüPara ile açıldı. Profil & Diyet sekmenizden planınızı inceleyebilirsiniz!`, 
+                code: uniqueCode, 
+                isDiet: true,
+                user 
+            });
+        }
+
+        reward.stock -= 1;
         const uniqueDigitalCode = `${reward.code}-${Math.floor(100000 + Math.random() * 900000)}`;
 
         const claim = new Claim({ 
