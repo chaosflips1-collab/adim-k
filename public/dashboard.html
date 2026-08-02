@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>AdımKasası PRO v2.5 - Dengeli Ekonomi</title>
+    <title>AdımKasası PRO v2.5 - 1.000 Adım = 0.10 YP</title>
     <link rel="manifest" href="/manifest.json">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
@@ -244,7 +244,7 @@
                     </div>
 
                     <div style="font-size: 13px; font-weight: 700;">Adımları YürüPara'ya Çevir!</div>
-                    <div style="font-size: 10px; color: #94a3b8;" id="multiplierText">1.000 Adım = 1 YürüPara (YP)</div>
+                    <div style="font-size: 10px; color: #94a3b8;" id="multiplierText">1.000 Adım = 0.10 YürüPara (YP)</div>
 
                     <div class="cap-box">
                         <div style="display:flex; justify-content:space-between; font-size:10px; color:#cbd5e1;">
@@ -279,7 +279,7 @@
                         <div class="m-stat-icon">💳</div>
                         <div>
                             <div class="m-stat-title">YürüPara Bakiyem</div>
-                            <div class="m-stat-value" id="userPoints">0 YP</div>
+                            <div class="m-stat-value" id="userPoints">0.00 YP</div>
                         </div>
                     </div>
                     <div class="m-stat-card">
@@ -312,7 +312,7 @@
                 
                 <div class="m-list-card" style="text-align:center;">
                     <strong>💧 Günlük 2 Litre Su Takibi</strong>
-                    <p style="font-size:11px; color:#94a3b8; margin-top:2px;">İçtiğin her bardak için tıkla! 8 bardağa ulaşınca +3 YürüPara kazan!</p>
+                    <p style="font-size:11px; color:#94a3b8; margin-top:2px;">İçtiğin her bardak için tıkla! 8 bardağa ulaşınca +0.15 YP kazan!</p>
                     <div class="water-grid" id="waterGrid">
                         <span class="glass-item" onclick="addWater(1)">🥛</span>
                         <span class="glass-item" onclick="addWater(2)">🥛</span>
@@ -329,13 +329,13 @@
                 <div class="m-list-card">
                     <strong style="font-size:13px; display:block;">😴 8 Saat Uyu Görevi</strong>
                     <p style="font-size:11px; color:#94a3b8; margin:2px 0 8px 0;">Düzenli uyku hedefini tamamla!</p>
-                    <button class="m-btn m-btn-blue" style="width:100%; font-size:11px;" onclick="completeQuest('sleep')">+2 YürüPara Kazan</button>
+                    <button class="m-btn m-btn-blue" style="width:100%; font-size:11px;" onclick="completeQuest('sleep')">+0.10 YP Kazan</button>
                 </div>
 
                 <div class="m-list-card">
                     <strong style="font-size:13px; display:block;">🏃 30 Dk Antrenman Yap Görevi</strong>
                     <p style="font-size:11px; color:#94a3b8; margin:2px 0 8px 0;">Egzersizini tamamla, formunu koru!</p>
-                    <button class="m-btn m-btn-primary" style="width:100%; font-size:11px;" onclick="completeQuest('workout')">+5 YürüPara Kazan</button>
+                    <button class="m-btn m-btn-primary" style="width:100%; font-size:11px;" onclick="completeQuest('workout')">+0.25 YP Kazan</button>
                 </div>
             </div>
 
@@ -346,29 +346,29 @@
                 <div class="m-list-card">
                     <div style="font-size:24px;">🐶</div>
                     <strong style="font-size:14px; display:block;">HAAP Barınak Mama Bağışı</strong>
-                    <p style="font-size:11px; color:#94a3b8; margin:2px 0 8px 0;">20 YP = 1 Kg Mama</p>
-                    <button class="m-btn m-btn-primary" style="width:100%; font-size:11px;" onclick="donateCharity('HAAP Barınak Mama Bağışı', 20)">20 YP Bağışla</button>
+                    <p style="font-size:11px; color:#94a3b8; margin:2px 0 8px 0;">1.00 YP = 1 Kg Mama</p>
+                    <button class="m-btn m-btn-primary" style="width:100%; font-size:11px;" onclick="donateCharity('HAAP Barınak Mama Bağışı', 1.00)">1.00 YP Bağışla</button>
                 </div>
 
                 <div class="m-list-card">
                     <div style="font-size:24px;">🌲</div>
                     <strong style="font-size:14px; display:block;">TEMA Geleceğe Nefes Fidanı</strong>
-                    <p style="font-size:11px; color:#94a3b8; margin:2px 0 8px 0;">35 YP = 1 Adet Fidan</p>
-                    <button class="m-btn m-btn-primary" style="width:100%; font-size:11px;" onclick="donateCharity('TEMA Fidan Bağışı', 35)">35 YP Bağışla</button>
+                    <p style="font-size:11px; color:#94a3b8; margin:2px 0 8px 0;">2.00 YP = 1 Adet Fidan</p>
+                    <button class="m-btn m-btn-primary" style="width:100%; font-size:11px;" onclick="donateCharity('TEMA Fidan Bağışı', 2.00)">2.00 YP Bağışla</button>
                 </div>
 
                 <div class="m-list-card">
                     <div style="font-size:24px;">❤️</div>
                     <strong style="font-size:14px; display:block;">LÖSEV Çocuk Sağlık Paketi</strong>
-                    <p style="font-size:11px; color:#94a3b8; margin:2px 0 8px 0;">50 YP = Sağlık Desteği</p>
-                    <button class="m-btn m-btn-primary" style="width:100%; font-size:11px;" onclick="donateCharity('LÖSEV Çocuk Sağlık Paketi', 50)">50 YP Bağışla</button>
+                    <p style="font-size:11px; color:#94a3b8; margin:2px 0 8px 0;">3.00 YP = Sağlık Desteği</p>
+                    <button class="m-btn m-btn-primary" style="width:100%; font-size:11px;" onclick="donateCharity('LÖSEV Çocuk Sağlık Paketi', 3.00)">3.00 YP Bağışla</button>
                 </div>
 
                 <div class="m-list-card">
                     <div style="font-size:24px;">📚</div>
                     <strong style="font-size:14px; display:block;">Köy Okulları Kitap Seti</strong>
-                    <p style="font-size:11px; color:#94a3b8; margin:2px 0 8px 0;">40 YP = Eğitime Destek</p>
-                    <button class="m-btn m-btn-primary" style="width:100%; font-size:11px;" onclick="donateCharity('Köy Okulları Kitap Seti', 40)">40 YP Bağışla</button>
+                    <p style="font-size:11px; color:#94a3b8; margin:2px 0 8px 0;">2.50 YP = Eğitime Destek</p>
+                    <button class="m-btn m-btn-primary" style="width:100%; font-size:11px;" onclick="donateCharity('Köy Okulları Kitap Seti', 2.50)">2.50 YP Bağışla</button>
                 </div>
             </div>
 
@@ -448,7 +448,7 @@
             document.getElementById('streakVal').textContent = u.streak || 1;
             document.getElementById('totalSteps').textContent = u.steps.toLocaleString('tr-TR');
             document.getElementById('unconvertedSteps').textContent = u.unconvertedSteps.toLocaleString('tr-TR');
-            document.getElementById('userPoints').textContent = `${(u.points || 0).toLocaleString('tr-TR')} YP`;
+            document.getElementById('userPoints').textContent = `${(u.points || 0).toFixed(2)} YP`;
             document.getElementById('userCalories').textContent = `${u.calories} kcal`;
             document.getElementById('statLevel').textContent = `Lv. ${u.level || 1}`;
 
@@ -591,7 +591,7 @@
                                     <span class="digital-tag">Dijital Kodu</span>
                                 </div>
                                 <span style="font-size:10px; color:#94a3b8; display:block; margin-top:2px;">${r.description}</span>
-                                <div style="color:#34d399; font-weight:800; font-size:12px; margin-top:4px;">💳 ${r.pointsCost} YürüPara</div>
+                                <div style="color:#34d399; font-weight:800; font-size:12px; margin-top:4px;">💳 ${r.pointsCost.toFixed(2)} YürüPara</div>
                             </div>
                             <button class="m-btn m-btn-primary" style="padding:6px 12px; font-size:11px;" onclick="claimReward('${r._id}')">Kodu Al</button>
                         </div>
