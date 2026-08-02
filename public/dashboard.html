@@ -260,9 +260,11 @@
                     </div>
 
                     <div class="m-btn-row">
-                        <button class="m-btn m-btn-secondary" onclick="addSteps(500)">🚶 +500 Adım</button>
+                        <button class="m-btn m-btn-secondary" onclick="addSteps(500)">🚶 +500 Test Adımı</button>
                         <button class="m-btn m-btn-gold" onclick="openWheelModal()">🎡 Şans Çarkı</button>
                     </div>
+
+                    <button class="m-btn m-btn-blue" style="width:100%; margin-top:6px; font-size:12px;" id="sensorBtn" onclick="toggleStepSensor()">📱 CANLI SENSÖRÜ BAŞLAT (Yürürken Say)</button>
 
                     <button class="m-btn m-btn-primary" style="width:100%; margin-top:8px; font-size:14px;" onclick="convertSteps()">⚡ YÜRÜPARA'YA ÇEVİR</button>
                 </div>
@@ -650,6 +652,58 @@
             } else if (tab === 'profile') {
                 document.querySelectorAll('.nav-item')[5].classList.add('active');
                 document.getElementById('tabProfile').classList.remove('hidden');
+            }
+        }
+
+        // CANLI İVMEÖLÇER (PEDOMETRE) SENSÖR ENTEGRASYONU
+        let isSensorActive = false;
+        let stepThreshold = 11.8;
+        let lastStepTime = 0;
+
+        async function toggleStepSensor() {
+            if (isSensorActive) {
+                window.removeEventListener('devicemotion', handleMotion);
+                isSensorActive = false;
+                document.getElementById('sensorBtn').textContent = '📱 CANLI SENSÖRÜ BAŞLAT (Yürürken Say)';
+                document.getElementById('sensorBtn').className = 'm-btn m-btn-blue';
+                showAlert('Sensör durduruldu.');
+                return;
+            }
+
+            if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+                try {
+                    const response = await DeviceMotionEvent.requestPermission();
+                    if (response === 'granted') {
+                        startMotionListener();
+                    } else {
+                        showAlert('Sensör erişim izni verilmeli.');
+                    }
+                } catch (e) {
+                    startMotionListener();
+                }
+            } else {
+                startMotionListener();
+            }
+        }
+
+        function startMotionListener() {
+            window.addEventListener('devicemotion', handleMotion);
+            isSensorActive = true;
+            document.getElementById('sensorBtn').textContent = '🟢 SENSÖR AKTİF (Telefonla Yürüyün)';
+            document.getElementById('sensorBtn').className = 'm-btn m-btn-gold';
+            showAlert('Sensör aktif! Telefonunuzla yürüyün.');
+        }
+
+        function handleMotion(e) {
+            const acc = e.accelerationIncludingGravity;
+            if (!acc || !acc.x) return;
+
+            const mag = Math.sqrt(acc.x * acc.x + acc.y * acc.y + acc.z * acc.z);
+            const now = Date.now();
+
+            if (mag > stepThreshold && (now - lastStepTime) > 350) {
+                lastStepTime = now;
+                addSteps(1);
             }
         }
 
