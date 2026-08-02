@@ -1,0 +1,20 @@
+{
+  "name": "adimkasasi-v2",
+  "version": "2.0.0",
+  "description": "AdımKasası PRO v2 - Pazar Standardı Gelişmiş Adım Ödül & Bağış Platformu",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^9.9.1"
+  }
+}

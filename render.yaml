@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: adimkasasi-v2
+    env: node
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: MONGO_URI
+        value: mongodb+srv://Adimkasasi:112233Okan@cluster0.g6ldbkz.mongodb.net/adimkasasi_v2?retryWrites=true&w=majority
+      - key: JWT_SECRET
+        value: adimkasasi_pro_v2_secret_key_2026_super_secure
