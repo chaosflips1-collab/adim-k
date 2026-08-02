@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AdımKasası PRO v2.6 - Yönetici Kontrol Paneli 👑</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Outfit', sans-serif; }
+        body { background: #020617; color: #fff; min-height: 100vh; padding: 20px; }
+        .container { max-width: 1000px; margin: 0 auto; }
+        .header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 20px; }
+        .logo { font-size: 20px; font-weight: 800; color: #c084fc; display: flex; align-items: center; gap: 8px; }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 24px; }
+        .stat-card { background: rgba(30, 27, 75, 0.5); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 18px; padding: 18px; text-align: center; }
+        .stat-val { font-size: 26px; font-weight: 800; color: #34d399; margin-top: 4px; }
+        .stat-lbl { font-size: 11px; color: #94a3b8; text-transform: uppercase; font-weight: 700; }
+        .card { background: rgba(30, 27, 75, 0.4); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 20px; padding: 20px; margin-bottom: 20px; }
+        .card-title { font-size: 16px; font-weight: 700; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+        input, select { width: 100%; padding: 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.3); color: #fff; margin-bottom: 10px; font-size: 13px; }
+        .btn { padding: 12px 20px; border-radius: 12px; border: none; font-weight: 700; cursor: pointer; font-size: 13px; }
+        .btn-primary { background: linear-gradient(135deg, #a855f7, #ec4899); color: white; }
+        .table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
+        .table th, .table td { padding: 10px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.06); }
+        .table th { color: #94a3b8; font-weight: 700; }
+        #alertBox { position: fixed; top: 20px; right: 20px; background: #10b981; color: white; padding: 12px 20px; border-radius: 14px; font-size: 13px; font-weight: 700; display: none; z-index: 9999; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="header">
+            <div class="logo">👑 AdımKasası PRO - Admin Paneli</div>
+            <div>
+                <a href="/dashboard.html" style="color:#c084fc; text-decoration:none; font-weight:700; font-size:13px; margin-right:15px;">📱 Kullanıcı Paneli</a>
+                <button class="btn btn-primary" onclick="logout()">🚪 Çıkış</button>
+            </div>
+        </div>
+
+        <!-- İSTATİSTİK SAYAÇLARI -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-lbl">Toplam Kayıtlı Kullanıcı</div>
+                <div class="stat-val" id="statUsers">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-lbl">Sistemde Atılan Toplam Adım</div>
+                <div class="stat-val" id="statSteps">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-lbl">Dağıtılan Toplam YürüPara</div>
+                <div class="stat-val" id="statPoints">0 YP</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-lbl">Alınan Dijital Kod Sayısı</div>
+                <div class="stat-val" id="statClaims">0</div>
+            </div>
+        </div>
+
+        <!-- YENİ DİJİTAL MAĞAZA ÜRÜNÜ / STOK EKLEME -->
+        <div class="card">
+            <div class="card-title">🎁 Yeni Dijital Mağaza Kodu & Ürün Ekle</div>
+            <form id="addRewardForm">
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                    <input type="text" id="rewTitle" placeholder="Ürün Başlığı (örn: Netflix 1 Ay Üyelik)" required>
+                    <input type="number" step="0.01" id="rewCost" placeholder="YürüPara Fiyatı (YP)" required>
+                </div>
+                <input type="text" id="rewDesc" placeholder="Açıklama / Detaylar" required>
+                <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;">
+                    <input type="text" id="rewCategory" placeholder="Kategori (örn: Oyun, Dijital Üyelik)" required>
+                    <input type="text" id="rewCode" placeholder="Kod Şablonu (örn: NETFLIX-PRO)" required>
+                    <input type="number" id="rewStock" placeholder="Stok Adedi" value="50" required>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width:100%; margin-top:6px;">⚡ Dijital Mağazaya Ekle</button>
+            </form>
+        </div>
+
+        <!-- KULLANICI LİSTESİ -->
+        <div class="card">
+            <div class="card-title">👥 Son Kaydolan Kullanıcılar</div>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Ad Soyad</th>
+                        <th>E-posta</th>
+                        <th>Seviye</th>
+                        <th>Toplam Adım</th>
+                        <th>YürüPara</th>
+                        <th>Kayıt Tarihi</th>
+                    </tr>
+                </thead>
+                <tbody id="userTableBody"></tbody>
+            </table>
+        </div>
+
+    </div>
+
+    <div id="alertBox"></div>
+
+    <script>
+        const token = localStorage.getItem('token_v2');
+        if (!token) window.location.href = '/index.html';
+
+        function showAlert(msg) {
+            const b = document.getElementById('alertBox');
+            b.textContent = msg;
+            b.style.display = 'block';
+            setTimeout(() => b.style.display = 'none', 3000);
+        }
+
+        function logout() { localStorage.removeItem('token_v2'); window.location.href = '/index.html'; }
+
+        async function fetchAdminStats() {
+            try {
+                const res = await fetch('/api/v2/admin/stats', { headers: { 'Authorization': `Bearer ${token}` } });
+                if (!res.ok) {
+                    alert('Admin yetkiniz bulunmuyor! Giriş sayfasına yönlendiriliyorsunuz.');
+                    window.location.href = '/dashboard.html';
+                    return;
+                }
+                const data = await res.json();
+                document.getElementById('statUsers').textContent = data.totalUsers.toLocaleString('tr-TR');
+                document.getElementById('statSteps').textContent = data.totalSteps.toLocaleString('tr-TR');
+                document.getElementById('statPoints').textContent = `${data.totalPoints.toFixed(2)} YP`;
+                document.getElementById('statClaims').textContent = data.totalClaims;
+            } catch (err) {}
+        }
+
+        async function fetchAdminUsers() {
+            try {
+                const res = await fetch('/api/v2/admin/users', { headers: { 'Authorization': `Bearer ${token}` } });
+                const data = await res.json();
+                const tbody = document.getElementById('userTableBody');
+                tbody.innerHTML = '';
+                data.users.forEach(u => {
+                    tbody.innerHTML += `
+                        <tr>
+                            <td><strong>${u.name}</strong></td>
+                            <td>${u.email}</td>
+                            <td>Lv. ${u.level || 1}</td>
+                            <td>${(u.steps || 0).toLocaleString('tr-TR')}</td>
+                            <td><strong style="color:#34d399;">${(u.points || 0).toFixed(2)} YP</strong></td>
+                            <td>${new Date(u.createdAt).toLocaleDateString('tr-TR')}</td>
+                        </tr>
+                    `;
+                });
+            } catch (err) {}
+        }
+
+        document.getElementById('addRewardForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const body = {
+                title: document.getElementById('rewTitle').value,
+                pointsCost: document.getElementById('rewCost').value,
+                description: document.getElementById('rewDesc').value,
+                category: document.getElementById('rewCategory').value,
+                code: document.getElementById('rewCode').value,
+                stock: document.getElementById('rewStock').value
+            };
+
+            try {
+                const res = await fetch('/api/v2/admin/rewards/add', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify(body)
+                });
+                const data = await res.json();
+                showAlert(data.message || data.error);
+                document.getElementById('addRewardForm').reset();
+            } catch (err) { showAlert('Hata oluştu.'); }
+        });
+
+        // Init
+        fetchAdminStats();
+        fetchAdminUsers();
+    </script>
+</body>
+</html>

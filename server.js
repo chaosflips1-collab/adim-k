@@ -21,27 +21,52 @@ const MONGO_URI = process.env.MONGO_URI || 'mongodb+srv://Adimkasasi:112233Okan@
 
 mongoose.connect(MONGO_URI)
     .then(async () => {
-        console.log('MongoDB Atlas (v2.5 DB) bağlandı!');
+        console.log('MongoDB Atlas (v2.6 DB) bağlandı!');
         await seedDemoData();
     })
     .catch((err) => console.log('MongoDB bağlantı hatası:', err));
 
-// DENGELİ ORAN: 1.000 ADIM = 0.10 YP (10.000 ADIM = 1 YP)
+// Admin Yetki Kontrol Middleware
+async function adminMiddleware(req, res, next) {
+    if (!req.user || (req.user.role !== 'admin' && req.user.email !== 'admin@adimkasasi.com')) {
+        return res.status(403).json({ error: "Bu alana sadece yönetici erişebilir!" });
+    }
+    next();
+}
+
+// Demo Verilerini Tohumlama (Seed)
 async function seedDemoData() {
     try {
-        await Reward.deleteMany({});
-        await Reward.insertMany([
-            { title: '🥗 Kişiye Özel 7 Günlük Diyetisyen Planı', description: 'Boy ve kilonuza göre hazırlanmış bilimsel 7 günlük diyet ve beslenme programı.', pointsCost: 10, category: 'Kişisel Diyet', code: 'DIET-PLAN-CUSTOM', icon: '🥗', stock: 999 },
-            { title: 'Starbucks Dijital Kahve Kodu', description: 'Tüm küçük boy kahvelerde geçerli e-kod.', pointsCost: 5, category: 'Dijital İçecek', code: 'STB-DIGITAL-8842', icon: '☕', stock: 100 },
-            { title: 'Spotify Premium 1 Ay Dijital Kod', description: '1 Aylık Bireysel Spotify üyelik dijital kodu.', pointsCost: 8, category: 'Dijital Üyelik', code: 'SPOTIFY-1MO-DIGI', icon: '🎵', stock: 80 },
-            { title: 'Valorant 1000 VP Dijital Kodu', description: 'Riot Games mağazasında geçerli dijital VP kodu.', pointsCost: 20, category: 'Dijital Oyun Kodu', code: 'VALO-1000VP-DIGI', icon: '🎯', stock: 45 },
-            { title: 'Steam 100 TL Dijital E-Pin Kodu', description: 'Steam cüzdanınıza bakiye ekleyen E-Pin kodu.', pointsCost: 25, category: 'Dijital Oyun Kodu', code: 'STEAM-100-DIGI', icon: '🎮', stock: 60 },
-            { title: 'Google Play 100 TL Dijital Kodu', description: 'Play Store hesabınıza bakiye ekleyen dijital kod.', pointsCost: 25, category: 'Dijital Market Kodu', code: 'GPLAY-100-DIGI', icon: '📱', stock: 50 },
-            { title: 'Trendyol 200 TL Dijital Hediye Kodu', description: 'Trendyol cüzdanım alanında anında aktif olan kod.', pointsCost: 45, category: 'Dijital Alışveriş', code: 'TRND-200-DIGI', icon: '🛍️', stock: 30 }
-        ]);
+        const rewardCount = await Reward.countDocuments();
+        if (rewardCount === 0) {
+            await Reward.insertMany([
+                { title: '🥗 Kişiye Özel 7 Günlük Diyetisyen Planı', description: 'Boy ve kilonuza göre hazırlanmış bilimsel 7 günlük diyet ve beslenme programı.', pointsCost: 10, category: 'Kişisel Diyet', code: 'DIET-PLAN-CUSTOM', icon: '🥗', stock: 999 },
+                { title: 'Starbucks Dijital Kahve Kodu', description: 'Tüm küçük boy kahvelerde geçerli e-kod.', pointsCost: 5, category: 'Dijital İçecek', code: 'STB-DIGITAL-8842', icon: '☕', stock: 100 },
+                { title: 'Spotify Premium 1 Ay Dijital Kod', description: '1 Aylık Bireysel Spotify üyelik dijital kodu.', pointsCost: 8, category: 'Dijital Üyelik', code: 'SPOTIFY-1MO-DIGI', icon: '🎵', stock: 80 },
+                { title: 'Valorant 1000 VP Dijital Kodu', description: 'Riot Games mağazasında geçerli dijital VP kodu.', pointsCost: 20, category: 'Dijital Oyun Kodu', code: 'VALO-1000VP-DIGI', icon: '🎯', stock: 45 },
+                { title: 'Steam 100 TL Dijital E-Pin Kodu', description: 'Steam cüzdanınıza bakiye ekleyen E-Pin kodu.', pointsCost: 25, category: 'Dijital Oyun Kodu', code: 'STEAM-100-DIGI', icon: '🎮', stock: 60 },
+                { title: 'Google Play 100 TL Dijital Kodu', description: 'Play Store hesabınıza bakiye ekleyen dijital kod.', pointsCost: 25, category: 'Dijital Market Kodu', code: 'GPLAY-100-DIGI', icon: '📱', stock: 50 },
+                { title: 'Trendyol 200 TL Dijital Hediye Kodu', description: 'Trendyol cüzdanım alanında anında aktif olan kod.', pointsCost: 45, category: 'Dijital Alışveriş', code: 'TRND-200-DIGI', icon: '🛍️', stock: 30 }
+            ]);
+        }
+
+        // Demo Admin Hesabı
+        const adminUser = await User.findOne({ email: 'admin@adimkasasi.com' });
+        if (!adminUser) {
+            const adminPassword = await bcrypt.hash('admin123456', 10);
+            await User.create({
+                name: 'Sistem Yöneticisi 👑',
+                email: 'admin@adimkasasi.com',
+                password: adminPassword,
+                role: 'admin',
+                steps: 500000,
+                points: 9999
+            });
+            console.log('v2.6 Admin hesabı oluşturuldu: admin@adimkasasi.com / admin123456');
+        }
 
         const userCount = await User.countDocuments();
-        if (userCount < 5) {
+        if (userCount < 4) {
             const dummyPassword = await bcrypt.hash('123456', 10);
             await User.insertMany([
                 { name: 'Ahmet Yılmaz 🥇', email: 'ahmet@adimkasasi.com', password: dummyPassword, steps: 142500, points: 18.5, calories: 5700, streak: 12, level: 4, multiplier: 2.0, role: 'user' },
@@ -65,7 +90,7 @@ function calculateLevel(steps) {
     return { level: 1, title: 'Yürüyüşçü', multiplier: 1.0 };
 }
 
-// --- API ROTALARI ---
+// --- PUBLIC AUTH ROTALARI ---
 
 app.post('/api/v2/register', async (req, res) => {
     try {
@@ -204,7 +229,6 @@ app.post('/api/v2/steps/add', authMiddleware, async (req, res) => {
         user.steps += amount;
         user.unconvertedSteps += amount;
 
-        // BİLİMSEL KİŞİSELLEŞTİRİLMİŞ KALORİ HESAPLAMASI (ACSM Formülü)
         const userWeight = user.weight || 70;
         const calFactorPerStep = userWeight * 0.00057;
         const burnedCalories = amount * calFactorPerStep;
@@ -236,16 +260,15 @@ app.post('/api/v2/user/update-body', authMiddleware, async (req, res) => {
     }
 });
 
-// BİLİMSEL KİŞİYE ÖZEL DİYET HESAPLAMA ENDPOINT'İ (Mifflin-St Jeor Formülü)
+// KİŞİYE ÖZEL DİYET HESAPLAMA
 app.post('/api/v2/diet/get-plan', authMiddleware, async (req, res) => {
     try {
         const user = await User.findById(req.user.id);
         const height = user.height || 175;
         const weight = user.weight || 70;
 
-        // Mifflin-St Jeor BMR Formülü (Yaş varsayılan 25)
         const bmr = Math.round(10 * weight + 6.25 * height - 5 * 25 + 5);
-        const targetDailyCalorie = Math.round(bmr + 300 - 350); // Yağ yakım hedef kalori
+        const targetDailyCalorie = Math.round(bmr + 300 - 350);
 
         const dietPlan = {
             userStats: { height, weight, bmr, targetDailyCalorie },
@@ -256,7 +279,7 @@ app.post('/api/v2/diet/get-plan', authMiddleware, async (req, res) => {
                 { title: '🌙 Akşam Yemeği', items: ['1 Porsiyon Olive Oil Zeytinyağlı Sebze Yemeği', '1 Kase Ev Yapımı Yarım Yağlı Yoğurt', '1 Dilim Siyez / Çavdar Ekmeği'] }
             ],
             waterTarget: '2.5 Litre / Gün',
-            notes: 'Bu plan Mifflin-St Jeor metabolizma formülüne ve Türkiye Diyetisyenler Derneği makro oranlarına (%40 Karbonhidrat, %30 Protein, %30 Yağ) göre kişiselleştirilmiştir.'
+            notes: 'Mifflin-St Jeor metabolizma denklemlerine uygundur.'
         };
 
         res.json({ dietPlan });
@@ -265,7 +288,7 @@ app.post('/api/v2/diet/get-plan', authMiddleware, async (req, res) => {
     }
 });
 
-// 5. Adımları YürüPara'ya Çevir
+// Adımları YürüPara'ya Çevir
 app.post('/api/v2/steps/convert', authMiddleware, async (req, res) => {
     try {
         const isDouble = req.body.isDouble === true;
@@ -291,7 +314,6 @@ app.post('/api/v2/steps/convert', authMiddleware, async (req, res) => {
         const lvlData = calculateLevel(user.steps);
         
         let earnedPoints = (convertAmount / 1000) * 0.10 * lvlData.multiplier;
-
         if (isDouble) earnedPoints *= 2;
 
         user.unconvertedSteps -= convertAmount;
@@ -302,7 +324,7 @@ app.post('/api/v2/steps/convert', authMiddleware, async (req, res) => {
 
         await user.save();
         res.json({
-            message: `🎉 ${convertAmount.toLocaleString('tr-TR')} adım dönüştürüldü! (${lvlData.multiplier}x Seviye Çarpanı ile +${(Math.round(earnedPoints * 100) / 100)} YürüPara kazandınız)`,
+            message: `🎉 ${convertAmount.toLocaleString('tr-TR')} adım dönüştürüldü! (+${(Math.round(earnedPoints * 100) / 100)} YürüPara)`,
             earnedPoints,
             user
         });
@@ -311,7 +333,7 @@ app.post('/api/v2/steps/convert', authMiddleware, async (req, res) => {
     }
 });
 
-// 6. SU TAKİBİ (+0.15 YP)
+// SU TAKİBİ
 app.post('/api/v2/health/water', authMiddleware, async (req, res) => {
     try {
         const user = await User.findById(req.user.id);
@@ -331,7 +353,7 @@ app.post('/api/v2/health/water', authMiddleware, async (req, res) => {
     }
 });
 
-// 7. GÜNLÜK SAĞLIK GÖREVLERİ
+// SAĞLIK GÖREVLERİ
 app.post('/api/v2/health/quest', authMiddleware, async (req, res) => {
     try {
         const { questType } = req.body;
@@ -364,7 +386,7 @@ app.post('/api/v2/health/quest', authMiddleware, async (req, res) => {
     }
 });
 
-// 8. Şans Çarkı (0.05 - 0.25 YP)
+// Şans Çarkı
 app.post('/api/v2/wheel/spin', authMiddleware, async (req, res) => {
     try {
         const user = await User.findById(req.user.id);
@@ -442,7 +464,6 @@ app.post('/api/v2/rewards/claim', authMiddleware, async (req, res) => {
 
         user.points -= reward.pointsCost;
 
-        // Diyet Planı Alma Özel Kod Mantığı
         if (reward.code === 'DIET-PLAN-CUSTOM') {
             const uniqueCode = `DIET-UNLOCK-${Math.floor(100000 + Math.random() * 900000)}`;
             const claim = new Claim({ userId: user._id, rewardTitle: reward.title, pointsSpent: reward.pointsCost, code: uniqueCode });
@@ -450,7 +471,7 @@ app.post('/api/v2/rewards/claim', authMiddleware, async (req, res) => {
             await claim.save();
 
             return res.json({ 
-                message: `🥗 Tebrikler! Kişiye özel diyetisyen planınız YürüPara ile açıldı. Profil & Diyet sekmenizden planınızı inceleyebilirsiniz!`, 
+                message: `🥗 Tebrikler! Kişiye özel diyetisyen planınız YürüPara ile açıldı. Profil sekmenizden planınızı inceleyebilirsiniz!`, 
                 code: uniqueCode, 
                 isDiet: true,
                 user 
@@ -479,7 +500,53 @@ app.post('/api/v2/rewards/claim', authMiddleware, async (req, res) => {
     } catch (err) { res.status(500).json({ error: "Dijital kod alma hatası." }); }
 });
 
+// --- v2.6 ADMIN ROTALARI ---
+
+app.get('/api/v2/admin/stats', authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+        const totalUsers = await User.countDocuments();
+        const totalClaims = await Claim.countDocuments();
+        const totalDonations = await Donation.countDocuments();
+        
+        const stepsAgg = await User.aggregate([{ $group: { _id: null, totalSteps: { $sum: "$steps" }, totalPoints: { $sum: "$points" } } }]);
+        const totalSteps = stepsAgg[0]?.totalSteps || 0;
+        const totalPoints = stepsAgg[0]?.totalPoints || 0;
+
+        res.json({
+            totalUsers,
+            totalClaims,
+            totalDonations,
+            totalSteps,
+            totalPoints: Math.round(totalPoints * 100) / 100
+        });
+    } catch (err) {
+        res.status(500).json({ error: "Admin istatistik hatası." });
+    }
+});
+
+app.get('/api/v2/admin/users', authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+        const users = await User.find().select('-password').sort({ createdAt: -1 }).limit(50);
+        res.json({ users });
+    } catch (err) {
+        res.status(500).json({ error: "Kullanıcı listesi hatası." });
+    }
+});
+
+app.post('/api/v2/admin/rewards/add', authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+        const { title, description, pointsCost, category, code, icon, stock } = req.body;
+        const newReward = new Reward({
+            title, description, pointsCost: parseFloat(pointsCost), category, code, icon, stock: parseInt(stock) || 50
+        });
+        await newReward.save();
+        res.json({ message: `🎁 "${title}" ürünü dijital mağazaya eklendi!`, reward: newReward });
+    } catch (err) {
+        res.status(500).json({ error: "Ödül ekleme hatası." });
+    }
+});
+
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
-    console.log(`🚀 AdımKasası PRO (v2.5) Sunucusu http://localhost:${PORT} adresinde aktif!`);
+    console.log(`🚀 AdımKasası PRO (v2.6) Sunucusu http://localhost:${PORT} adresinde aktif!`);
 });
