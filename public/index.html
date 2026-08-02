@@ -276,6 +276,10 @@
                 <input type="text" id="regName" placeholder="Ad Soyad" required>
                 <input type="email" id="regEmail" placeholder="E-posta Adresi" required>
                 <input type="password" id="regPassword" placeholder="Şifre" required>
+                <div style="display:flex; gap:8px;">
+                    <input type="number" id="regHeight" placeholder="Boy (cm)" value="175" required style="flex:1;">
+                    <input type="number" id="regWeight" placeholder="Kilo (kg)" value="70" required style="flex:1;">
+                </div>
                 <button type="submit" class="action-btn">PRO Hesabını Oluştur</button>
             </form>
             <div class="switch-container">
@@ -335,11 +339,14 @@
             const email = document.getElementById('regEmail').value;
             const password = document.getElementById('regPassword').value;
 
+            const height = parseInt(document.getElementById('regHeight').value) || 175;
+            const weight = parseInt(document.getElementById('regWeight').value) || 70;
+
             try {
                 const res = await fetch('/api/v2/register', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name, email, password })
+                    body: JSON.stringify({ name, email, password, height, weight })
                 });
                 const data = await res.json();
                 if (res.ok) {

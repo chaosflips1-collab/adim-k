@@ -68,7 +68,7 @@ function calculateLevel(steps) {
 
 app.post('/api/v2/register', async (req, res) => {
     try {
-        const { name, email, password } = req.body;
+        const { name, email, password, height, weight } = req.body;
         if (!name || !email || !password) return res.status(400).json({ error: "Tüm alanları doldurun." });
 
         const existingUser = await User.findOne({ email: email.toLowerCase() });
@@ -78,6 +78,9 @@ app.post('/api/v2/register', async (req, res) => {
         const newUser = new User({
             name,
             email: email.toLowerCase(),
+            password: hashedPassword,
+            height: height || 175,
+            weight: weight || 70,
             steps: 0,
             unconvertedSteps: 0,
             points: 0,
@@ -198,7 +201,12 @@ app.post('/api/v2/steps/add', authMiddleware, async (req, res) => {
 
         user.steps += amount;
         user.unconvertedSteps += amount;
-        user.calories += Math.round(amount * 0.04);
+
+        // BİLİMSEL KİŞİSELLEŞTİRİLMİŞ KALORİ HESAPLAMASI (ACSM Formülü)
+        const userWeight = user.weight || 70;
+        const calFactorPerStep = userWeight * 0.00057; // 70kg -> ~0.04 kcal/adım, 90kg -> ~0.051 kcal/adım
+        const burnedCalories = amount * calFactorPerStep;
+        user.calories += Math.round(burnedCalories * 10) / 10;
 
         const lvlData = calculateLevel(user.steps);
         user.level = lvlData.level;
@@ -208,6 +216,22 @@ app.post('/api/v2/steps/add', authMiddleware, async (req, res) => {
         res.json({ message: `${amount} adım senkronize edildi!`, user });
     } catch (err) {
         res.status(500).json({ error: "Adım ekleme hatası." });
+    }
+});
+
+// BOY VE KİLO GÜNCELLEME ROTASI
+app.post('/api/v2/user/update-body', authMiddleware, async (req, res) => {
+    try {
+        const { height, weight } = req.body;
+        const user = await User.findById(req.user.id);
+
+        if (height) user.height = parseInt(height);
+        if (weight) user.weight = parseInt(weight);
+
+        await user.save();
+        res.json({ message: `Vücut ölçüleriniz güncellendi! (${user.height} cm, ${user.weight} kg)`, user });
+    } catch (err) {
+        res.status(500).json({ error: "Ölçü güncelleme hatası." });
     }
 });
 

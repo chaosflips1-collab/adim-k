@@ -389,6 +389,22 @@
                 <h3 style="font-size:15px; margin-bottom:10px;">👤 Profil & Dijital Kodlarım</h3>
 
                 <div class="m-list-card">
+                    <strong style="font-size:13px; color:#60a5fa;">📐 Kişisel Sağlık & Ölçü Bilgileri</strong>
+                    <div style="font-size:11px; color:#94a3b8; margin:4px 0 8px 0;">Kalori harcamanız boy ve kilonuza göre ACSM tıp formülüyle özel hesaplanır.</div>
+                    
+                    <div style="display:flex; gap:8px; margin-bottom:8px;">
+                        <input type="number" id="userHeightInput" placeholder="Boy (cm)" style="flex:1; padding:8px; border-radius:10px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.3); color:white; font-size:12px;">
+                        <input type="number" id="userWeightInput" placeholder="Kilo (kg)" style="flex:1; padding:8px; border-radius:10px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.3); color:white; font-size:12px;">
+                    </div>
+                    <button class="m-btn m-btn-blue" style="width:100%; font-size:11px; padding:8px;" onclick="updateBodyStats()">📐 Ölçülerimi Güncelle</button>
+
+                    <div style="margin-top:10px; padding:8px; background:rgba(255,255,255,0.05); border-radius:10px; font-size:11px; color:#cbd5e1;" id="bodyMetricsBox">
+                        <div>Adım Adım Mesafeniz: <span id="strideVal">--</span> cm</div>
+                        <div>Vücut Kitle İndeksiniz (VKİ): <span id="bmiVal">--</span></div>
+                    </div>
+                </div>
+
+                <div class="m-list-card">
                     <strong style="font-size:13px; color:#c084fc;">🎁 Aldığım Dijital Kodlar & E-Pinler</strong>
                     <div id="myClaimsList" style="margin-top:6px;"></div>
                 </div>
@@ -457,6 +473,24 @@
             const lvlTitles = ['', 'Yürüyüşçü', 'Tempolu', 'Maratoncu', 'Efsane'];
             document.getElementById('levelPill').textContent = `⚡ Lv.${u.level || 1} ${lvlTitles[u.level] || ''} (${u.multiplier || 1.0}x)`;
             document.getElementById('multiplierText').textContent = `Seviye Çarpanınız: ${u.multiplier || 1.0}x (${lvlTitles[u.level] || ''})`;
+
+            const h = u.height || 175;
+            const w = u.weight || 70;
+            document.getElementById('userHeightInput').value = h;
+            document.getElementById('userWeightInput').value = w;
+
+            // Adım Boyu (Stride Length) = Boy * 0.414
+            const strideCm = Math.round(h * 0.414);
+            document.getElementById('strideVal').textContent = strideCm;
+
+            // VKİ (Body Mass Index) = Kilo / (BoyInMeters ^ 2)
+            const bmi = (w / ((h / 100) * (h / 100))).toFixed(1);
+            let bmiStatus = 'Normal';
+            if (bmi < 18.5) bmiStatus = 'Zayıf';
+            else if (bmi >= 25 && bmi < 30) bmiStatus = 'Fazla Kilolu';
+            else if (bmi >= 30) bmiStatus = 'Obez';
+
+            document.getElementById('bmiVal').textContent = `${bmi} (${bmiStatus})`;
 
             const circ = 414;
             const pct = Math.min(u.unconvertedSteps / 10000, 1);
@@ -652,6 +686,26 @@
             } else if (tab === 'profile') {
                 document.querySelectorAll('.nav-item')[5].classList.add('active');
                 document.getElementById('tabProfile').classList.remove('hidden');
+            }
+        }
+
+        async function updateBodyStats() {
+            const height = parseInt(document.getElementById('userHeightInput').value);
+            const weight = parseInt(document.getElementById('userWeightInput').value);
+
+            if (!height || !weight) return showAlert('Lütfen boy ve kilonuzu eksiksiz girin.');
+
+            try {
+                const res = await fetch('/api/v2/user/update-body', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ height, weight })
+                });
+                const data = await res.json();
+                showAlert(data.message || data.error);
+                fetchUserData();
+            } catch (err) {
+                showAlert('Ölçü güncelleme hatası.');
             }
         }
 

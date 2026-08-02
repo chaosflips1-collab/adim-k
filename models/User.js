@@ -15,6 +15,10 @@ const UserSchema = new mongoose.Schema({
     lastWheelSpinDate: { type: String, default: '' },
     totalDonations: { type: Number, default: 0 },
 
+    // BİLİMSEL KİŞİSEL SAĞLIK VERİLERİ (BOY & KİLO)
+    height: { type: Number, default: 175 }, // cm
+    weight: { type: Number, default: 70 }, // kg
+
     // v2.5 YENİ EKLENEN SAĞLIK & SEVİYE ALANLARI
     level: { type: Number, default: 1 }, // 1: Yürüyüşçü, 2: Tempolu, 3: Maratoncu, 4: Efsane
     multiplier: { type: Number, default: 1.0 }, // Puan katlama katsayısı (1.0x, 1.2x, 1.5x, 2.0x)
