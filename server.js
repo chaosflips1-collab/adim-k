@@ -17,7 +17,7 @@ app.use(express.json());
 app.use(cors());
 app.use(express.static('public'));
 
-const MONGO_URI = process.env.MONGO_URI || 'mongodb+srv://Adimkasasi:112233Okan@cluster0.g6ldbkz.mongodb.net/adimkasasi_v2?retryWrites=true&w=majority';
+const MONGO_URI = 'mongodb+srv://Adimkasasi:112233Okan@cluster0.g6ldbkz.mongodb.net/adimkasasi_v2?retryWrites=true&w=majority';
 
 mongoose.connect(MONGO_URI)
     .then(async () => {
