@@ -108,45 +108,77 @@
         .app-body::-webkit-scrollbar { display: none; }
 
         .hero-meter-card {
-            background: linear-gradient(145deg, rgba(46, 16, 101, 0.8) 0%, rgba(15, 23, 42, 0.9) 100%);
-            border: 1px solid rgba(255, 255, 255, 0.15);
+            background: linear-gradient(145deg, rgba(76, 29, 149, 0.75) 0%, rgba(15, 23, 42, 0.95) 100%);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
             border-radius: 28px;
             padding: 20px;
             text-align: center;
             margin-bottom: 16px;
+            box-shadow: 0 16px 40px rgba(124, 58, 237, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero-meter-card::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(236, 72, 153, 0.12) 0%, transparent 60%);
+            pointer-events: none;
         }
 
         .circle-progress-box {
             position: relative;
-            width: 150px;
-            height: 150px;
+            width: 154px;
+            height: 154px;
             margin: 5px auto 12px auto;
             display: flex;
             align-items: center;
             justify-content: center;
+            filter: drop-shadow(0 0 12px rgba(168, 85, 247, 0.4));
         }
 
         .circle-progress-box svg { width: 100%; height: 100%; transform: rotate(-90deg); }
         .circle-bg { stroke: rgba(255, 255, 255, 0.08); stroke-width: 10; fill: transparent; }
-        .circle-val { stroke: url(#purpleGradient); stroke-width: 10; stroke-dasharray: 414; stroke-dashoffset: 100; stroke-linecap: round; fill: transparent; transition: stroke-dashoffset 0.6s ease; }
+        .circle-val { stroke: url(#purpleGradient); stroke-width: 10; stroke-dasharray: 414; stroke-dashoffset: 100; stroke-linecap: round; fill: transparent; transition: stroke-dashoffset 0.8s cubic-bezier(0.4, 0, 0.2, 1); }
 
         .circle-inner-text { position: absolute; text-align: center; }
-        .circle-inner-text .number { font-size: 28px; font-weight: 800; }
-        .circle-inner-text .label { font-size: 10px; color: #94a3b8; text-transform: uppercase; }
+        .circle-inner-text .number { font-size: 30px; font-weight: 800; text-shadow: 0 0 20px rgba(236, 72, 153, 0.6); }
+        .circle-inner-text .label { font-size: 10px; color: #cbd5e1; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px; }
 
         .mobile-stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
-        .m-stat-card { background: rgba(30, 27, 75, 0.4); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 16px; padding: 12px; display: flex; align-items: center; gap: 10px; }
-        .m-stat-icon { font-size: 20px; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: rgba(255, 255, 255, 0.08); }
-        .m-stat-title { font-size: 9px; color: #94a3b8; text-transform: uppercase; font-weight: 600; }
+        .m-stat-card { 
+            background: rgba(30, 27, 75, 0.5); 
+            backdrop-filter: blur(14px);
+            border: 1px solid rgba(255, 255, 255, 0.12); 
+            border-radius: 18px; 
+            padding: 12px; 
+            display: flex; 
+            align-items: center; 
+            gap: 10px;
+            transition: transform 0.2s ease, border-color 0.2s ease;
+        }
+
+        .m-stat-card:hover {
+            transform: translateY(-2px);
+            border-color: rgba(168, 85, 247, 0.4);
+        }
+
+        .m-stat-icon { font-size: 20px; width: 38px; height: 38px; border-radius: 12px; display: flex; align-items: center; justify-content: center; background: rgba(255, 255, 255, 0.1); box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3); }
+        .m-stat-title { font-size: 9px; color: #94a3b8; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px; }
         .m-stat-value { font-size: 15px; font-weight: 800; color: #fff; }
 
         .m-btn-row { display: flex; gap: 8px; margin-top: 12px; }
-        .m-btn { flex: 1; padding: 12px; border-radius: 14px; border: none; font-size: 12px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; }
-        .m-btn:active { transform: scale(0.96); }
+        .m-btn { flex: 1; padding: 12px; border-radius: 16px; border: none; font-size: 12px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.2s ease; }
+        .m-btn:active { transform: scale(0.95); }
         .m-btn-secondary { background: rgba(255, 255, 255, 0.08); color: #fff; border: 1px solid rgba(255, 255, 255, 0.15); }
-        .m-btn-primary { background: linear-gradient(135deg, #a855f7, #ec4899); color: #fff; }
-        .m-btn-gold { background: linear-gradient(135deg, #f59e0b, #ef4444); color: #fff; }
-        .m-btn-blue { background: linear-gradient(135deg, #3b82f6, #06b6d4); color: #fff; }
+        .m-btn-primary { background: linear-gradient(135deg, #a855f7, #ec4899); color: #fff; box-shadow: 0 6px 20px rgba(168, 85, 247, 0.4); }
+        .m-btn-gold { background: linear-gradient(135deg, #f59e0b, #ef4444); color: #fff; box-shadow: 0 6px 20px rgba(245, 158, 11, 0.35); }
+        .m-btn-blue { background: linear-gradient(135deg, #3b82f6, #06b6d4); color: #fff; box-shadow: 0 6px 20px rgba(59, 130, 246, 0.35); }
 
         .cap-box { background: rgba(255, 255, 255, 0.04); border-radius: 12px; padding: 8px 12px; margin-top: 10px; border: 1px solid rgba(255, 255, 255, 0.08); }
         .cap-bar { height: 6px; background: rgba(255, 255, 255, 0.1); border-radius: 10px; overflow: hidden; margin-top: 4px; }
@@ -388,6 +420,16 @@
             <div id="tabProfile" class="tab-page hidden">
                 <h3 style="font-size:15px; margin-bottom:10px;">👤 Profil & Dijital Kodlarım</h3>
 
+                <div id="adminShortcutCard" class="m-list-card hidden" style="background:linear-gradient(135deg, rgba(168,85,247,0.25), rgba(236,72,153,0.25)); border:1px solid rgba(236,72,153,0.4);">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <div>
+                            <strong style="font-size:13px; color:#ec4899;">👑 Yönetici Yetkisi Tespit Edildi</strong>
+                            <span style="font-size:10px; color:#cbd5e1; display:block;">Sistem istatistiklerini ve stokları yönetebilirsiniz.</span>
+                        </div>
+                        <a href="/admin.html" class="m-btn m-btn-primary" style="padding:6px 12px; font-size:11px; text-decoration:none;">Paneli Aç ⚡</a>
+                    </div>
+                </div>
+
                 <div class="m-list-card">
                     <strong style="font-size:13px; color:#60a5fa;">📐 Kişisel Sağlık & Ölçü Bilgileri</strong>
                     <div style="font-size:11px; color:#94a3b8; margin:4px 0 8px 0;">Kalori harcamanız boy ve kilonuza göre ACSM tıp formülüyle özel hesaplanır.</div>
@@ -490,6 +532,11 @@
             document.getElementById('userPoints').textContent = `${(u.points || 0).toFixed(2)} YP`;
             document.getElementById('userCalories').textContent = `${u.calories} kcal`;
             document.getElementById('statLevel').textContent = `Lv. ${u.level || 1}`;
+
+            if (u.role === 'admin' || u.email === 'admin@adimkasasi.com') {
+                const adminCard = document.getElementById('adminShortcutCard');
+                if (adminCard) adminCard.classList.remove('hidden');
+            }
 
             const lvlTitles = ['', 'Yürüyüşçü', 'Tempolu', 'Maratoncu', 'Efsane'];
             document.getElementById('levelPill').textContent = `⚡ Lv.${u.level || 1} ${lvlTitles[u.level] || ''} (${u.multiplier || 1.0}x)`;
