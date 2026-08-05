@@ -852,11 +852,18 @@
             }
         }
 
-        // 🍎 iOS SAFARI & ANDROID ÇAPRAZ PLATFORM BİYOMEKANİK PEDOMETRE
+        // 🔬 TEPE NOKTASI TESPİTİ (PEAK DETECTION) & HAREKETLİ ORTALAMA (SMA) PEDOMETRE ALGORİTMASI
         let isSensorActive = false;
         let lastStepTime = 0;
         let consecutiveSteps = 0;
-        let lastMag = 9.81;
+
+        // Sinyal Düzleştirme ve Tepe Tespiti Tamponları
+        const SMA_WINDOW_SIZE = 5;
+        let rawSignalWindow = [];
+        let isPeakSearching = true;
+        let currentPeak = 0;
+        let currentTrough = 999;
+        const DYNAMIC_STEP_THRESHOLD = 1.25; // m/s^2 cinsinden net biyomekanik adım basış eşiği
 
         async function toggleStepSensor() {
             if (isSensorActive) {
@@ -864,13 +871,14 @@
                 window.removeEventListener('deviceorientation', handleOrientation);
                 isSensorActive = false;
                 consecutiveSteps = 0;
+                rawSignalWindow = [];
                 document.getElementById('sensorBtn').textContent = '📱 CANLI SENSÖRÜ BAŞLAT (Yürürken Say)';
                 document.getElementById('sensorBtn').className = 'm-btn m-btn-blue';
                 showAlert('Sensör durduruldu.');
                 return;
             }
 
-            // iOS 13+ Safari Özel İzin İsteği Protokolü
+            // iOS 13+ Safari & Android İzin Protokolü
             if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
                 try {
                     const motionPerm = await DeviceMotionEvent.requestPermission();
@@ -881,7 +889,7 @@
                     if (motionPerm === 'granted') {
                         startMotionListener();
                     } else {
-                        showAlert('🍎 iOS Hareket ve Yönelim izni verilmedi. Lütfen izin verin.');
+                        showAlert('🍎 iOS Hareket izni verilmedi. Lütfen ayarlarınızdan sensör iznini açın.');
                     }
                 } catch (e) {
                     startMotionListener();
@@ -899,19 +907,22 @@
             window.addEventListener('deviceorientation', handleOrientation, false);
             
             isSensorActive = true;
-            document.getElementById('sensorBtn').textContent = '🟢 YÜRÜYÜŞ SENSÖRÜ AKTİF (Yürüyün)';
+            rawSignalWindow = [];
+            consecutiveSteps = 0;
+            
+            document.getElementById('sensorBtn').textContent = '🟢 TEPE ALGILAMA SENSÖRÜ AKTİF (Yürüyün)';
             document.getElementById('sensorBtn').className = 'm-btn m-btn-gold';
-            showAlert('🍏 iOS / Android Sensörü Aktif! Telefonunuzla yürümeye başlayabilirsiniz.');
+            showAlert('🍏 iOS / Android Tepe Algılama Pedometresi Aktif! Telefonunuzla yürüyebilirsiniz.');
         }
 
         function handleOrientation(e) {
-            // iOS Safari Sensör Uyanık Tutma Dinleyicisi
+            // iOS Safari Sensör Uyanık Tutma
         }
 
         function handleMotion(e) {
             let mag = 0;
 
-            // iOS Safari ve Android Hibrit İvme Normalizasyonu
+            // 1. iOS Safari & Android İvme Normalizasyonu
             if (e.accelerationIncludingGravity && e.accelerationIncludingGravity.x !== null) {
                 const x = e.accelerationIncludingGravity.x || 0;
                 const y = e.accelerationIncludingGravity.y || 0;
@@ -921,44 +932,60 @@
                 const x = e.acceleration.x || 0;
                 const y = e.acceleration.y || 0;
                 const z = e.acceleration.z || 0;
-                mag = Math.sqrt(x * x + y * y + z * z) + 9.81; // Lineer ivmeyi toplam ivme ölçeğine normalize et
+                mag = Math.sqrt(x * x + y * y + z * z) + 9.81;
             }
 
             if (mag === 0) return;
 
+            // 2. HAREKETLİ ORTALAMA FİLTRESİ (Simple Moving Average - SMA)
+            rawSignalWindow.push(mag);
+            if (rawSignalWindow.length > SMA_WINDOW_SIZE) rawSignalWindow.shift();
+
+            const smaMag = rawSignalWindow.reduce((a, b) => a + b, 0) / rawSignalWindow.length;
             const now = Date.now();
             const timeDiff = now - lastStepTime;
 
-            // Dinamik İvme Farkı (Delta Acceleration)
-            const deltaMag = Math.abs(mag - lastMag);
-            lastMag = mag;
+            // 3. TEPE VE DİP NOKTASI TESPİTİ (Peak & Trough Detection Algorithm)
+            if (smaMag > currentPeak) {
+                currentPeak = smaMag;
+            }
+            if (smaMag < currentTrough) {
+                currentTrough = smaMag;
+            }
 
-            // 1. iOS / ANDROID BİLEŞİK İVME FİLTRESİ (9.9 m/s^2 - 17.5 m/s^2 veya Net Delta > 0.95)
-            const isAccValid = (mag >= 9.9 && mag <= 17.5) || (deltaMag >= 0.95 && deltaMag <= 8.5);
+            // Tepe Genliği (Delta Peak to Trough)
+            const peakDelta = currentPeak - currentTrough;
 
-            if (isAccValid) {
-                // 2. KADANS VE RİTİM FREKANSI (260ms - 880ms)
-                if (timeDiff >= 260 && timeDiff <= 880) {
-                    consecutiveSteps++;
+            // Adım Tescil Koşulları:
+            // a) Tepe genliği eşiği geçmeli (peakDelta >= 1.25 m/s^2)
+            // b) Zaman kadansı 260ms - 850ms arasında olmalı
+            if (peakDelta >= DYNAMIC_STEP_THRESHOLD && timeDiff >= 260 && timeDiff <= 850) {
+                consecutiveSteps++;
 
-                    // 3. 2-ADIM RİTİM TAMPONU (Sahte kıpırdamaları eler, yürüyüşü anında doğrular)
-                    if (consecutiveSteps >= 2) {
-                        lastStepTime = now;
-                        addSteps(1);
-                        
-                        // Canlı Buton Geri Bildirimi
-                        const btn = document.getElementById('sensorBtn');
-                        if (btn) {
-                            btn.textContent = '⚡ ADIM ALGILANDI (Yürümeye Devam Et)';
-                            setTimeout(() => {
-                                if (isSensorActive) btn.textContent = '🟢 YÜRÜYÜŞ SENSÖRÜ AKTİF (Yürüyün)';
-                            }, 400);
-                        }
-                    }
-                } else if (timeDiff > 1100) {
-                    consecutiveSteps = 0;
+                // Sahte kıpırdamaları elemek için 2 ardışık ritmik adım tamponu
+                if (consecutiveSteps >= 2) {
                     lastStepTime = now;
+                    addSteps(1);
+
+                    // Sıfırla ve yeni tepe aramasına geç
+                    currentPeak = smaMag;
+                    currentTrough = smaMag;
+
+                    // Canlı Buton Geri Bildirimi
+                    const btn = document.getElementById('sensorBtn');
+                    if (btn) {
+                        btn.textContent = '⚡ TEPE ADIM ALGILANDI (Yürüyüşe Devam Et)';
+                        setTimeout(() => {
+                            if (isSensorActive) btn.textContent = '🟢 TEPE ALGILAMA SENSÖRÜ AKTİF (Yürüyün)';
+                        }, 350);
+                    }
                 }
+            } else if (timeDiff > 1000) {
+                // Yürüyüş durduğunda veya ritim bozulduğunda tepe arayıcısını sıfırla
+                consecutiveSteps = 0;
+                currentPeak = smaMag;
+                currentTrough = smaMag;
+                lastStepTime = now;
             }
         }
 
