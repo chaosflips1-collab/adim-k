@@ -852,11 +852,11 @@
             }
         }
 
-        // BİYOMEKANİK PEDOMETRE VE SALLANTI FİLTRESİ (ANTI-SHAKE)
+        // BİYOMEKANİK PEDOMETRE VE HASSAS YÜRÜYÜŞ SENSÖRÜ
         let isSensorActive = false;
         let lastStepTime = 0;
         let consecutiveSteps = 0;
-        let stepWindow = [];
+        let lastMag = 9.81;
 
         async function toggleStepSensor() {
             if (isSensorActive) {
@@ -875,7 +875,7 @@
                     if (response === 'granted') {
                         startMotionListener();
                     } else {
-                        showAlert('Sensör erişim izni verilmeli.');
+                        showAlert('Sensör erişim izni verilmedi.');
                     }
                 } catch (e) {
                     startMotionListener();
@@ -886,41 +886,60 @@
         }
 
         function startMotionListener() {
-            window.addEventListener('devicemotion', handleMotion);
+            window.removeEventListener('devicemotion', handleMotion);
+            window.addEventListener('devicemotion', handleMotion, true);
             isSensorActive = true;
-            document.getElementById('sensorBtn').textContent = '🟢 YÜRÜYÜŞ SENSÖRÜ AKTİF';
+            document.getElementById('sensorBtn').textContent = '🟢 YÜRÜYÜŞ SENSÖRÜ AKTİF (Yürüyün)';
             document.getElementById('sensorBtn').className = 'm-btn m-btn-gold';
-            showAlert('Gerçek Yürüyüş Sensörü aktif! Telefonunuzla yürüyün.');
+            showAlert('Sensör aktif! Telefonunuzla yürümeye başlayabilirsiniz.');
         }
 
         function handleMotion(e) {
-            const acc = e.accelerationIncludingGravity;
-            if (!acc || typeof acc.x === 'undefined') return;
+            // iOS ve Android Hibrit İvme Desteği
+            const acc = e.accelerationIncludingGravity || e.acceleration;
+            if (!acc) return;
 
-            const mag = Math.sqrt(acc.x * acc.x + acc.y * acc.y + acc.z * acc.z);
+            const x = acc.x || 0;
+            const y = acc.y || 0;
+            const z = acc.z || 0;
+
+            if (x === 0 && y === 0 && z === 0) return;
+
+            // Vektörel İvme Hesabı (Magnitude)
+            const mag = Math.sqrt(x * x + y * y + z * z);
             const now = Date.now();
             const timeDiff = now - lastStepTime;
 
-            // 1. ŞİDDET VE İVME FİLTRESİ:
-            // Gerçek yürüyüş ivmesi 10.8 m/s^2 ile 16.5 m/s^2 arasındadır.
-            // Hızlı el sallamaları (>16.5 m/s^2) veya hafif titreşimler (<10.8 m/s^2) adım sayılmaz.
-            if (mag >= 10.8 && mag <= 16.5) {
-                
-                // 2. RİTİM & CADENCE FİLTRESİ (360ms - 750ms):
-                if (timeDiff >= 360 && timeDiff <= 750) {
-                    stepWindow.push(timeDiff);
-                    if (stepWindow.length > 4) stepWindow.shift();
+            // Dinamik İvme Farkı (Delta Acceleration)
+            const deltaMag = Math.abs(mag - lastMag);
+            lastMag = mag;
 
+            // 1. DİNAMİK İVME FİLTRESİ (10.1 m/s^2 ile 17.5 m/s^2 arası veya Net Hareket Delta > 1.1)
+            const isAccValid = (mag >= 10.1 && mag <= 17.5) || (deltaMag >= 1.1 && deltaMag <= 8.0);
+
+            if (isAccValid) {
+                // 2. YÜRÜYÜŞ RİTİM VE FREKANS FİLTRESİ (280ms - 850ms)
+                if (timeDiff >= 280 && timeDiff <= 850) {
                     consecutiveSteps++;
 
-                    // 3. 4-ADIM TAMPON DOĞRULAMA (Rastgele sallamaları engeller)
-                    if (consecutiveSteps >= 4) {
+                    // 3. 2-ADIM RİTİM TAMPONU (Rastgele sarsıntıları eler, yürüyüşü anında doğrular)
+                    if (consecutiveSteps >= 2) {
                         lastStepTime = now;
                         addSteps(1);
+                        
+                        // Canlı Buton Geri Bildirimi
+                        const btn = document.getElementById('sensorBtn');
+                        if (btn) {
+                            btn.textContent = '⚡ ADIM ALGILANDI (Yürümeye Devam Et)';
+                            setTimeout(() => {
+                                if (isSensorActive) btn.textContent = '🟢 YÜRÜYÜŞ SENSÖRÜ AKTİF (Yürüyün)';
+                            }, 400);
+                        }
                     }
-                } else if (timeDiff > 1200) {
+                } else if (timeDiff > 1100) {
+                    // Duraksamada ritmi sıfırla
                     consecutiveSteps = 0;
-                    stepWindow = [];
+                    lastStepTime = now;
                 }
             }
         }
