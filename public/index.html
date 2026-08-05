@@ -5,6 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>AdımKasası PRO v2 - Giriş Yap</title>
     <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#a855f7">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="AdımKasası">
+    <link rel="apple-touch-icon" href="/assets/icon.svg">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         * {
@@ -262,14 +267,6 @@
         <h2>AdımKasası PRO</h2>
         <p class="subtitle">Yürü, Yarış, Bağış Yap & Ödülleri Kap!</p>
 
-        <!-- GOOGLE İLE GİRİŞ / KAYIT -->
-        <button type="button" class="google-btn" onclick="handleGoogleAuth()">
-            <img src="https://upload.wikimedia.org/wikipedia/commons/5/53/Google_%22G%22_Logo.svg" alt="Google" class="google-icon">
-            Google İle Devam Et
-        </button>
-
-        <div class="divider"><span>veya e-posta ile</span></div>
-
         <!-- REGISTER -->
         <div id="registerContainer" style="width:100%;">
             <form id="registerForm">
@@ -324,6 +321,10 @@
     </div>
 
     <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js').catch(() => {});
+        }
+
         if (localStorage.getItem('token_v2')) {
             window.location.href = '/dashboard.html';
         }
@@ -399,29 +400,6 @@
                 showMsg('Sunucu hatası!', true);
             }
         });
-        async function handleGoogleAuth() {
-            const email = prompt("Google hesabı ile tek tıkla giriş/kayıt için Gmail adresinizi girin:", "ornek@gmail.com");
-            if (!email) return;
-
-            const name = email.split('@')[0].toUpperCase();
-            try {
-                const res = await fetch('/api/v2/auth/google', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email, name })
-                });
-                const data = await res.json();
-                if (res.ok) {
-                    localStorage.setItem('token_v2', data.token);
-                    showMsg(data.message);
-                    setTimeout(() => window.location.href = '/dashboard.html', 700);
-                } else {
-                    showMsg(data.error, true);
-                }
-            } catch (err) {
-                showMsg('Google bağlantı hatası!', true);
-            }
-        }
         function openLegalModal(type) {
             const m = document.getElementById('legalModal');
             const title = document.getElementById('legalTitle');

@@ -5,6 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>AdımKasası PRO v2.5 - 1.000 Adım = 0.10 YP</title>
     <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#a855f7">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="AdımKasası">
+    <link rel="apple-touch-icon" href="/assets/icon.svg">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         * {
@@ -292,8 +297,7 @@
                     </div>
 
                     <div class="m-btn-row">
-                        <button class="m-btn m-btn-secondary" onclick="addSteps(500)">🚶 +500 Test Adımı</button>
-                        <button class="m-btn m-btn-gold" onclick="openWheelModal()">🎡 Şans Çarkı</button>
+                        <button class="m-btn m-btn-gold" style="width:100%;" onclick="openWheelModal()">🎡 Şans Çarkı</button>
                     </div>
 
                     <button class="m-btn m-btn-blue" style="width:100%; margin-top:6px; font-size:12px;" id="sensorBtn" onclick="toggleStepSensor()">📱 CANLI SENSÖRÜ BAŞLAT (Yürürken Say)</button>
@@ -507,8 +511,22 @@
     <div id="alertBox"></div>
 
     <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js').catch(() => {});
+        }
+
         const token = localStorage.getItem('token_v2');
         if (!token) window.location.href = '/index.html';
+
+        // Kullanıcı adı gibi kullanıcı tarafından belirlenebilen alanlar kaçışsız
+        // innerHTML'e basılırsa saklı (stored) XSS oluşur; liderlik tablosu herkese
+        // görünür olduğu için kötü niyetli bir isimle kayıt olan biri tüm
+        // oyunculara payload gönderebilirdi.
+        function escapeHtml(value) {
+            return String(value ?? '').replace(/[&<>"']/g, (ch) => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            })[ch]);
+        }
 
         function showAlert(msg) {
             const b = document.getElementById('alertBox');
@@ -535,7 +553,7 @@
             document.getElementById('totalSteps').textContent = u.steps.toLocaleString('tr-TR');
             document.getElementById('unconvertedSteps').textContent = u.unconvertedSteps.toLocaleString('tr-TR');
             document.getElementById('userPoints').textContent = `${(u.points || 0).toFixed(2)} YP`;
-            document.getElementById('userCalories').textContent = `${u.calories} kcal`;
+            document.getElementById('userCalories').textContent = `${(u.calories || 0).toFixed(1)} kcal`;
             document.getElementById('statLevel').textContent = `Lv. ${u.level || 1}`;
 
             if (u.role === 'admin' || u.email === 'admin@adimkasasi.com') {
@@ -580,19 +598,6 @@
                 if (idx < gCount) g.classList.add('active');
                 else g.classList.remove('active');
             });
-        }
-
-        async function addSteps(amount) {
-            try {
-                const res = await fetch('/api/v2/steps/add', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                    body: JSON.stringify({ amount })
-                });
-                const data = await res.json();
-                showAlert(data.message || data.error);
-                fetchUserData();
-            } catch (err) {}
         }
 
         async function convertSteps() {
@@ -683,11 +688,12 @@
                 container.innerHTML = '';
                 data.leaderboard.forEach((u, i) => {
                     const medals = ['🥇', '🥈', '🥉'];
+                    const name = escapeHtml(u.name);
                     container.innerHTML += `
                         <div class="m-row">
                             <div style="display:flex; align-items:center; gap:8px;">
                                 <span style="font-weight:800; font-size:14px;">${medals[i] || i+1}</span>
-                                <div><strong>${u.name}</strong><div style="font-size:9px; color:#94a3b8;">Lv.${u.level || 1} • 🔥 ${u.streak || 1} Gün</div></div>
+                                <div><strong>${name}</strong><div style="font-size:9px; color:#94a3b8;">Lv.${u.level || 1} • 🔥 ${u.streak || 1} Gün</div></div>
                             </div>
                             <div style="text-align:right;"><span style="color:#c084fc; font-weight:800; font-size:12px;">${u.steps.toLocaleString('tr-TR')} Adım</span></div>
                         </div>
@@ -716,14 +722,16 @@
                 const container = document.getElementById('storeContainer');
                 container.innerHTML = '';
                 data.rewards.forEach(r => {
+                    const title = escapeHtml(r.title);
+                    const desc = escapeHtml(r.description);
                     container.innerHTML += `
                         <div class="m-list-card" style="display:flex; justify-content:space-between; align-items:center;">
                             <div>
                                 <div style="display:flex; align-items:center; gap:6px;">
-                                    <strong style="font-size:13px;">${r.icon || '🎁'} ${r.title}</strong>
+                                    <strong style="font-size:13px;">${escapeHtml(r.icon || '🎁')} ${title}</strong>
                                     <span class="digital-tag">Dijital Kodu</span>
                                 </div>
-                                <span style="font-size:10px; color:#94a3b8; display:block; margin-top:2px;">${r.description}</span>
+                                <span style="font-size:10px; color:#94a3b8; display:block; margin-top:2px;">${desc}</span>
                                 <div style="color:#34d399; font-weight:800; font-size:12px; margin-top:4px;">💳 ${r.pointsCost.toFixed(2)} YürüPara</div>
                             </div>
                             <button class="m-btn m-btn-primary" style="padding:6px 12px; font-size:11px;" onclick="claimReward('${r._id}')">Kodu Al</button>
@@ -759,15 +767,28 @@
             cList.innerHTML = claims && claims.length ? '' : '<p style="font-size:11px; color:#94a3b8;">Henüz dijital kuponunuz yok.</p>';
             if (claims) {
                 claims.forEach(c => {
+                    const title = escapeHtml(c.rewardTitle);
+                    const code = escapeHtml(c.code);
                     cList.innerHTML += `
                         <div style="background:rgba(255,255,255,0.05); padding:8px; border-radius:10px; margin-top:4px; display:flex; justify-content:space-between; font-size:11px;">
-                            <span>${c.rewardTitle}</span>
-                            <span style="color:#c084fc; font-family:monospace; font-weight:700;" onclick="navigator.clipboard.writeText('${c.code}'); showAlert('Kod kopyalandı!')" title="Kopyalamak için tıkla">📋 ${c.code}</span>
+                            <span>${title}</span>
+                            <span class="claim-code" style="color:#c084fc; font-family:monospace; font-weight:700; cursor:pointer;" data-code="${code}" title="Kopyalamak için tıkla">📋 ${code}</span>
                         </div>
                     `;
                 });
             }
         }
+
+        // Kopyalama için inline onclick yerine event delegation kullanıyoruz - kodun
+        // doğrudan bir JS string'inin içine gömülmesini (ve dolayısıyla tırnak
+        // kaçışı/injection riskini) tamamen ortadan kaldırır.
+        document.getElementById('myClaimsList').addEventListener('click', (e) => {
+            const el = e.target.closest('.claim-code');
+            if (el) {
+                navigator.clipboard.writeText(el.dataset.code);
+                showAlert('Kod kopyalandı!');
+            }
+        });
 
         function switchNav(tab) {
             document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
@@ -852,47 +873,140 @@
             }
         }
 
-        // 🔬 TEPE NOKTASI TESPİTİ (PEAK DETECTION) & HAREKETLİ ORTALAMA (SMA) PEDOMETRE ALGORİTMASI
+        // 🔬 ADIM SAYAR v2: Yüksek-Geçirgen Taban Çizgisi + Adaptif Eşik + Histerezisli
+        // Sıfır-Geçiş (Zero-Crossing) Algoritması. Eski sürüm sabit bir eşik kullanıyor ve
+        // tepe/dip değerlerini adım sayılmadıkça hiç sıfırlamıyordu (telefonun tutuluş
+        // şekline göre yanlış pozitif/negatif üretiyordu). Bu sürüm her yürüyüş döngüsünü
+        // ayrı ayrı değerlendirir ve son adımların genliğine göre eşiği kendisi ayarlar.
         let isSensorActive = false;
-        let lastStepTime = 0;
-        let consecutiveSteps = 0;
+        let lastCycleTime = 0;
 
-        // Sinyal Düzleştirme ve Tepe Tespiti Tamponları
-        const SMA_WINDOW_SIZE = 5;
+        const SMA_WINDOW_SIZE = 5;          // hızlı titreşim/gürültü filtresi (~125ms @40Hz)
+        const BASELINE_WINDOW_SIZE = 40;    // yavaş taban çizgisi: yerçekimi/eğim driftini süzer (~1sn)
+        const MIN_STEP_INTERVAL_MS = 280;   // ~214 adım/dk üst sınır (koşu dahil çift sayımı engeller)
+        const MAX_STEP_INTERVAL_MS = 1400;  // çok yavaş yürüyüş için alt sınır
+        const IDLE_RESET_MS = 2500;         // bu süre adım gelmezse genlik geçmişi sıfırlanır
+        const MIN_DYNAMIC_THRESHOLD = 0.9;  // m/s², cep/bilek titremesini eleyen taban eşik
+        const MAX_DYNAMIC_THRESHOLD = 4.5;  // tek bir sert darbenin eşiği bozmaması için tavan
+        const AMPLITUDE_HISTORY_SIZE = 6;
+        const SHOCK_REJECT_MAGNITUDE = 40;  // düşürme/çarpma gibi anlık aşırı sıçramaları ele
+        const RHYTHM_WINDOW_SIZE = 6;          // adım saymadan önce incelenen ardışık döngü penceresi
+        const RHYTHM_CV_TOLERANCE = 0.12;      // pencere içindeki sürelerin varyasyon katsayısı (std/ortalama) bu değeri aşamaz
+
         let rawSignalWindow = [];
-        let isPeakSearching = true;
-        let currentPeak = 0;
-        let currentTrough = 999;
-        const DYNAMIC_STEP_THRESHOLD = 1.25; // m/s^2 cinsinden net biyomekanik adım basış eşiği
+        let baselineWindow = [];
+        let recentAmplitudes = [];
+        let intervalHistory = [];  // son birkaç döngünün süresi (ritim/rastgelelik ayrımı için)
+        let stepPhase = 'low';   // 'low' | 'high' — histerezis durum makinesi
+        let phaseExtreme = 0;
+
+        // --- Toplu (Batch) Senkronizasyon: her adımda ayrı network isteği ATMIYORUZ ---
+        // Eskiden her adımda fetch() atılıyordu: yavaş/kopuk bağlantıda adımlar sessizce
+        // kayboluyor ve yürürken saniyede bir toast bildirimi ekranı kaplıyordu.
+        const PENDING_STEPS_KEY = 'adimkasasi_pendingSteps_v2';
+        let pendingSteps = 0;
+        let localStepsBase = 0;
+        let localUnconvertedBase = 0;
+        let syncIntervalId = null;
+
+        function restorePendingSteps() {
+            try {
+                const saved = parseInt(localStorage.getItem(PENDING_STEPS_KEY) || '0', 10);
+                if (saved > 0) pendingSteps = saved;
+            } catch (e) {}
+        }
+
+        function persistPendingSteps() {
+            try {
+                if (pendingSteps > 0) localStorage.setItem(PENDING_STEPS_KEY, String(pendingSteps));
+                else localStorage.removeItem(PENDING_STEPS_KEY);
+            } catch (e) {}
+        }
+
+        async function flushPendingSteps() {
+            if (pendingSteps <= 0) return;
+            const amount = pendingSteps;
+            pendingSteps = 0;
+            persistPendingSteps();
+
+            try {
+                const res = await fetch('/api/v2/steps/add', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    keepalive: true, // sekme kapanırken/gizlenirken isteğin yarıda kesilmemesini sağlar
+                    body: JSON.stringify({ amount })
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.user) {
+                        localStepsBase = data.user.steps;
+                        localUnconvertedBase = data.user.unconvertedSteps;
+                        updateUI(data.user);
+                    }
+                } else {
+                    pendingSteps += amount; // sunucu reddetti, adımları kaybetme
+                    persistPendingSteps();
+                }
+            } catch (err) {
+                // Ağ hatası: adımları geri koy, bir sonraki senkronda tekrar denenir
+                pendingSteps += amount;
+                persistPendingSteps();
+            }
+        }
+
+        function getDynamicThreshold() {
+            if (recentAmplitudes.length < 3) return MIN_DYNAMIC_THRESHOLD;
+            const avg = recentAmplitudes.reduce((a, b) => a + b, 0) / recentAmplitudes.length;
+            return Math.min(MAX_DYNAMIC_THRESHOLD, Math.max(MIN_DYNAMIC_THRESHOLD, avg * 0.45));
+        }
+
+        function registerStep(amplitude) {
+            pendingSteps++;
+            localStepsBase++;
+            localUnconvertedBase++;
+
+            // İyimser (optimistic) anlık UI güncellemesi: ağ isteğini beklemeden ekrana yansıt
+            const totalEl = document.getElementById('totalSteps');
+            const unconvEl = document.getElementById('unconvertedSteps');
+            if (totalEl) totalEl.textContent = localStepsBase.toLocaleString('tr-TR');
+            if (unconvEl) unconvEl.textContent = localUnconvertedBase.toLocaleString('tr-TR');
+            persistPendingSteps();
+
+            recentAmplitudes.push(amplitude);
+            if (recentAmplitudes.length > AMPLITUDE_HISTORY_SIZE) recentAmplitudes.shift();
+
+            const btn = document.getElementById('sensorBtn');
+            if (btn) {
+                btn.textContent = `⚡ ADIM ALGILANDI (${pendingSteps} senkronize bekliyor)`;
+                clearTimeout(btn._resetTimer);
+                btn._resetTimer = setTimeout(() => {
+                    if (isSensorActive) btn.textContent = '🟢 TEPE ALGILAMA SENSÖRÜ AKTİF (Yürüyün)';
+                }, 350);
+            }
+        }
 
         async function toggleStepSensor() {
             if (isSensorActive) {
-                window.removeEventListener('devicemotion', handleMotion);
-                window.removeEventListener('deviceorientation', handleOrientation);
-                isSensorActive = false;
-                consecutiveSteps = 0;
-                rawSignalWindow = [];
-                document.getElementById('sensorBtn').textContent = '📱 CANLI SENSÖRÜ BAŞLAT (Yürürken Say)';
-                document.getElementById('sensorBtn').className = 'm-btn m-btn-blue';
-                showAlert('Sensör durduruldu.');
+                stopMotionListener('Sensör durduruldu.');
+                return;
+            }
+
+            if (typeof DeviceMotionEvent === 'undefined') {
+                showAlert('❌ Bu cihaz/tarayıcı hareket sensörünü desteklemiyor.');
                 return;
             }
 
             // iOS 13+ Safari & Android İzin Protokolü
-            if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+            if (typeof DeviceMotionEvent.requestPermission === 'function') {
                 try {
                     const motionPerm = await DeviceMotionEvent.requestPermission();
-                    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-                        try { await DeviceOrientationEvent.requestPermission(); } catch (oe) {}
-                    }
-
                     if (motionPerm === 'granted') {
                         startMotionListener();
                     } else {
-                        showAlert('🍎 iOS Hareket izni verilmedi. Lütfen ayarlarınızdan sensör iznini açın.');
+                        showAlert('🍎 iOS Hareket izni verilmedi. Ayarlar > Safari > Hareket ve Yön Erişimi\'nden izin verin.');
                     }
                 } catch (e) {
-                    startMotionListener();
+                    showAlert('🍎 Hareket izni istenirken bir hata oluştu. Sayfayı yenileyip tekrar deneyin.');
                 }
             } else {
                 startMotionListener();
@@ -901,28 +1015,53 @@
 
         function startMotionListener() {
             window.removeEventListener('devicemotion', handleMotion);
-            window.removeEventListener('deviceorientation', handleOrientation);
-            
             window.addEventListener('devicemotion', handleMotion, false);
-            window.addEventListener('deviceorientation', handleOrientation, false);
-            
-            isSensorActive = true;
+
+            restorePendingSteps();
             rawSignalWindow = [];
-            consecutiveSteps = 0;
-            
+            baselineWindow = [];
+            recentAmplitudes = [];
+            intervalHistory = [];
+            stepPhase = 'low';
+            phaseExtreme = 0;
+            lastCycleTime = 0;
+            isSensorActive = true;
+
+            clearInterval(syncIntervalId);
+            syncIntervalId = setInterval(flushPendingSteps, 5000); // her 5sn'de bir toplu senkron
+
             document.getElementById('sensorBtn').textContent = '🟢 TEPE ALGILAMA SENSÖRÜ AKTİF (Yürüyün)';
             document.getElementById('sensorBtn').className = 'm-btn m-btn-gold';
-            showAlert('🍏 iOS / Android Tepe Algılama Pedometresi Aktif! Telefonunuzla yürüyebilirsiniz.');
+            showAlert('🍏 iOS / Android Adım Sayar Aktif! Telefonunuzla yürüyebilirsiniz.');
         }
 
-        function handleOrientation(e) {
-            // iOS Safari Sensör Uyanık Tutma
+        function stopMotionListener(message) {
+            window.removeEventListener('devicemotion', handleMotion);
+            clearInterval(syncIntervalId);
+            syncIntervalId = null;
+            isSensorActive = false;
+            flushPendingSteps();
+            document.getElementById('sensorBtn').textContent = '📱 CANLI SENSÖRÜ BAŞLAT (Yürürken Say)';
+            document.getElementById('sensorBtn').className = 'm-btn m-btn-blue';
+            if (message) showAlert(message);
         }
+
+        // Sekme arka plana alındığında birikmiş adımları senkronize et; öne dönünce
+        // (sensör hâlâ açık işaretliyse) dinleyiciyi kaldığı yerden devam ettir.
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                if (isSensorActive) flushPendingSteps();
+            } else if (isSensorActive) {
+                window.removeEventListener('devicemotion', handleMotion);
+                window.addEventListener('devicemotion', handleMotion, false);
+            }
+        });
+        window.addEventListener('pagehide', () => { if (isSensorActive) flushPendingSteps(); });
 
         function handleMotion(e) {
             let mag = 0;
 
-            // 1. iOS Safari & Android İvme Normalizasyonu
+            // iOS Safari & Android İvme Normalizasyonu
             if (e.accelerationIncludingGravity && e.accelerationIncludingGravity.x !== null) {
                 const x = e.accelerationIncludingGravity.x || 0;
                 const y = e.accelerationIncludingGravity.y || 0;
@@ -933,59 +1072,77 @@
                 const y = e.acceleration.y || 0;
                 const z = e.acceleration.z || 0;
                 mag = Math.sqrt(x * x + y * y + z * z) + 9.81;
+            } else {
+                return;
             }
 
-            if (mag === 0) return;
+            // Düşürme/çarpma gibi anlık aşırı sıçramaları adım sanmayı engelle
+            if (mag <= 0 || mag > SHOCK_REJECT_MAGNITUDE) return;
 
-            // 2. HAREKETLİ ORTALAMA FİLTRESİ (Simple Moving Average - SMA)
+            // 1) Hızlı gürültü filtresi (Simple Moving Average)
             rawSignalWindow.push(mag);
             if (rawSignalWindow.length > SMA_WINDOW_SIZE) rawSignalWindow.shift();
-
             const smaMag = rawSignalWindow.reduce((a, b) => a + b, 0) / rawSignalWindow.length;
+
+            // 2) Yavaş taban çizgisi (basit yüksek-geçirgen filtre): telefonun cepte/elde
+            //    farklı açılarda tutulmasından kaynaklanan yerçekimi driftini süzer
+            baselineWindow.push(smaMag);
+            if (baselineWindow.length > BASELINE_WINDOW_SIZE) baselineWindow.shift();
+            const baseline = baselineWindow.reduce((a, b) => a + b, 0) / baselineWindow.length;
+            const deviation = smaMag - baseline;
+
+            const threshold = getDynamicThreshold();
             const now = Date.now();
-            const timeDiff = now - lastStepTime;
 
-            // 3. TEPE VE DİP NOKTASI TESPİTİ (Peak & Trough Detection Algorithm)
-            if (smaMag > currentPeak) {
-                currentPeak = smaMag;
+            // 3) Histerezisli sıfır-geçiş tespiti: yükseliş (high) fazından düşüş (low)
+            //    fazına geçiş bir adım döngüsünün tamamlandığını gösterir
+            if (stepPhase !== 'high' && deviation > threshold / 2) {
+                stepPhase = 'high';
+                phaseExtreme = deviation;
+            } else if (stepPhase === 'high' && deviation > phaseExtreme) {
+                phaseExtreme = deviation; // döngünün gerçek tepe noktasını takip et
             }
-            if (smaMag < currentTrough) {
-                currentTrough = smaMag;
-            }
 
-            // Tepe Genliği (Delta Peak to Trough)
-            const peakDelta = currentPeak - currentTrough;
+            if (stepPhase === 'high' && deviation < -threshold / 2) {
+                const amplitude = phaseExtreme - deviation;
+                // lastCycleTime henüz hiç ayarlanmadıysa (sensör az önce başladı) bunu ilk
+                // döngü olarak kabul et; aksi halde Date.now() - 0 devasa bir sayı çıkıp
+                // üst sınırı aşar ve referans hiç güncellenmediği için TÜM adımları
+                // sonsuza kadar kilitler.
+                const timeDiff = lastCycleTime === 0 ? MIN_STEP_INTERVAL_MS : now - lastCycleTime;
+                const isValidCadence = timeDiff >= MIN_STEP_INTERVAL_MS && timeDiff <= MAX_STEP_INTERVAL_MS;
 
-            // Adım Tescil Koşulları:
-            // a) Tepe genliği eşiği geçmeli (peakDelta >= 1.25 m/s^2)
-            // b) Zaman kadansı 260ms - 850ms arasında olmalı
-            if (peakDelta >= DYNAMIC_STEP_THRESHOLD && timeDiff >= 260 && timeDiff <= 850) {
-                consecutiveSteps++;
+                if (amplitude >= threshold && isValidCadence) {
+                    // Referans noktasını geçerli genlik+zamanlamaya sahip HER döngüde
+                    // güncelliyoruz. Aksi halde reddedilen bir döngünün süresi bir
+                    // sonrakine eklenir, aralık yanlışlıkla "2 katı" görünür ve ritim
+                    // penceresi gerçek bir yürüyüşte bile asla dolmaz.
+                    lastCycleTime = now;
 
-                // Sahte kıpırdamaları elemek için 2 ardışık ritmik adım tamponu
-                if (consecutiveSteps >= 2) {
-                    lastStepTime = now;
-                    addSteps(1);
+                    intervalHistory.push(timeDiff);
+                    if (intervalHistory.length > RHYTHM_WINDOW_SIZE) intervalHistory.shift();
 
-                    // Sıfırla ve yeni tepe aramasına geç
-                    currentPeak = smaMag;
-                    currentTrough = smaMag;
-
-                    // Canlı Buton Geri Bildirimi
-                    const btn = document.getElementById('sensorBtn');
-                    if (btn) {
-                        btn.textContent = '⚡ TEPE ADIM ALGILANDI (Yürüyüşe Devam Et)';
-                        setTimeout(() => {
-                            if (isSensorActive) btn.textContent = '🟢 TEPE ALGILAMA SENSÖRÜ AKTİF (Yürüyün)';
-                        }, 350);
+                    // Sallanma/titremeyi elemek için tek bir ardışık çift yetmez: son
+                    // RHYTHM_WINDOW_SIZE döngünün TAMAMI istatistiksel olarak tutarlı
+                    // (düşük varyasyon katsayılı) olmalı. Yumuşatılmış rastgele gürültü
+                    // ardışık 1-2 çift arasında şans eseri benzer aralıklar üretebilir,
+                    // ama daha uzun bir pencerede düşük varyansı sürdüremez; gerçek
+                    // yürüyüş adımları ise doğası gereği düzenlidir.
+                    if (intervalHistory.length === RHYTHM_WINDOW_SIZE) {
+                        const mean = intervalHistory.reduce((a, b) => a + b, 0) / intervalHistory.length;
+                        const variance = intervalHistory.reduce((a, b) => a + (b - mean) ** 2, 0) / intervalHistory.length;
+                        const cv = Math.sqrt(variance) / mean;
+                        if (cv <= RHYTHM_CV_TOLERANCE) {
+                            registerStep(amplitude);
+                        }
                     }
+                } else if (timeDiff > IDLE_RESET_MS) {
+                    // Uzun süredir hiç geçerli döngü yok: durdu/oturdu, her şeyi sıfırla
+                    recentAmplitudes = [];
+                    intervalHistory = [];
+                    lastCycleTime = 0;
                 }
-            } else if (timeDiff > 1000) {
-                // Yürüyüş durduğunda veya ritim bozulduğunda tepe arayıcısını sıfırla
-                consecutiveSteps = 0;
-                currentPeak = smaMag;
-                currentTrough = smaMag;
-                lastStepTime = now;
+                stepPhase = 'low';
             }
         }
 

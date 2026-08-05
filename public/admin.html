@@ -38,8 +38,8 @@
             <h2 style="font-size:20px; font-weight:800; margin-bottom:6px;">Yönetici Girişi</h2>
             <p style="font-size:12px; color:#94a3b8; margin-bottom:16px;">AdımKasası PRO Admin Paneli</p>
             <form id="adminLoginForm">
-                <input type="email" id="adminEmail" placeholder="Admin E-posta" value="admin@adimkasasi.com" required>
-                <input type="password" id="adminPassword" placeholder="Admin Şifre" value="admin123456" required>
+                <input type="email" id="adminEmail" placeholder="Admin E-posta" required>
+                <input type="password" id="adminPassword" placeholder="Admin Şifre" required>
                 <button type="submit" class="btn btn-primary" style="width:100%; font-size:14px; margin-top:6px;">Yönetici Paneline Giriş Yap</button>
             </form>
         </div>
@@ -116,6 +116,16 @@
     <div id="alertBox"></div>
 
     <script>
+        // Kullanıcı adı/e-postası gibi kullanıcı tarafından belirlenebilen alanlar
+        // kaçışsız innerHTML'e basılırsa saklı (stored) XSS oluşur - kötü niyetli
+        // bir isimle kayıt olan biri admin panelini açan yöneticinin tarayıcısında
+        // kod çalıştırabilirdi.
+        function escapeHtml(value) {
+            return String(value ?? '').replace(/[&<>"']/g, (ch) => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            })[ch]);
+        }
+
         function showAlert(msg) {
             const b = document.getElementById('alertBox');
             b.textContent = msg;
@@ -183,10 +193,12 @@
                 const tbody = document.getElementById('userTableBody');
                 tbody.innerHTML = '';
                 data.users.forEach(u => {
+                    const name = escapeHtml(u.name);
+                    const email = escapeHtml(u.email);
                     tbody.innerHTML += `
                         <tr>
-                            <td><strong>${u.name}</strong></td>
-                            <td>${u.email}</td>
+                            <td><strong>${name}</strong></td>
+                            <td>${email}</td>
                             <td>Lv. ${u.level || 1}</td>
                             <td>${(u.steps || 0).toLocaleString('tr-TR')}</td>
                             <td><strong style="color:#34d399;">${(u.points || 0).toFixed(2)} YP</strong></td>

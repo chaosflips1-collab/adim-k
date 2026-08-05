@@ -17,7 +17,14 @@ app.use(express.json());
 app.use(cors());
 app.use(express.static('public'));
 
-const MONGO_URI = 'mongodb+srv://Adimkasasi:112233Okan@cluster0.g6ldbkz.mongodb.net/adimkasasi_v2?retryWrites=true&w=majority';
+// Bağlantı dizesi yalnızca ortam değişkeninden okunur; kaynak kodda düz metin
+// kimlik bilgisi bulundurmayız (daha önce burada sabit kodlanmış bir şifre vardı
+// ve bu değer zaten GitHub'a push edilmişti - Atlas şifresinin rotasyona
+// sokulması gerekiyor).
+const MONGO_URI = process.env.MONGO_URI;
+if (!MONGO_URI) {
+    console.error('❌ MONGO_URI ortam değişkeni tanımlı değil. Sunucu veritabanına bağlanamayacak.');
+}
 
 mongoose.connect(MONGO_URI)
     .then(async () => {
@@ -50,10 +57,16 @@ async function seedDemoData() {
             ]);
         }
 
-        // Demo Admin Hesabı
+        // Demo Admin Hesabı: SADECE hiç yoksa oluşturulur. Var olan hesaba veya
+        // diğer kullanıcılara ASLA dokunulmaz - bu fonksiyon her sunucu
+        // başlangıcında (her deploy/restart'ta) çalışır; önceden burada tüm
+        // kullanıcıların adım/puan/kalorisini sıfırlayan bir updateMany vardı ve
+        // bu, üretimde her yeniden başlatmada gerçek kullanıcıların TÜM
+        // ilerlemesini siliyordu.
         let adminUser = await User.findOne({ email: 'admin@adimkasasi.com' });
         if (!adminUser) {
-            const adminPassword = await bcrypt.hash('admin123456', 10);
+            const initialAdminPassword = process.env.INITIAL_ADMIN_PASSWORD || require('crypto').randomBytes(9).toString('base64').replace(/[+/=]/g, '');
+            const adminPassword = await bcrypt.hash(initialAdminPassword, 10);
             adminUser = await User.create({
                 name: 'Sistem Yöneticisi 👑',
                 email: 'admin@adimkasasi.com',
@@ -64,21 +77,8 @@ async function seedDemoData() {
                 points: 0,
                 calories: 0
             });
-            console.log('v2.6 Admin hesabı oluşturuldu: admin@adimkasasi.com / admin123456');
-        } else {
-            adminUser.steps = 0;
-            adminUser.unconvertedSteps = 0;
-            adminUser.points = 0;
-            adminUser.calories = 0;
-            await adminUser.save();
+            console.log(`v2.6 Admin hesabı oluşturuldu: admin@adimkasasi.com / ${initialAdminPassword} (bu şifreyi kaydedin, bir daha gösterilmeyecek)`);
         }
-
-        // Sıfırlama Temizliği: Tüm demo adımları ve puanları 0 yapalım (Gerçek kullanıcılar için hazır başlasın)
-        await User.updateMany(
-            { role: { $ne: 'admin' } },
-            { $set: { steps: 0, unconvertedSteps: 0, todayConvertedSteps: 0, points: 0, calories: 0, level: 1, multiplier: 1.0 } }
-        );
-        console.log('Tüm veritabanı adım ve puan istatistikleri 0 olarak sıfırlandı.');
     } catch (err) {
         console.error('Seed hatası:', err);
     }
@@ -86,6 +86,22 @@ async function seedDemoData() {
 
 function getTodayStr() {
     return new Date().toISOString().split('T')[0];
+}
+
+// Günlük sıfırlama kontrolü tek bir yerde: önceden bu mantık sadece
+// /api/v2/steps/add içindeydi, bu yüzden bir kullanıcı yeni bir günde önce su
+// takibi veya görev tamamlama gibi başka bir uç noktayı çağırırsa
+// waterGlasses/completedQuests hiç sıfırlanmadan bir önceki günden kalıyor ve
+// o gün için görev/su bonusu kalıcı olarak engelleniyordu.
+function ensureDailyReset(user) {
+    const today = getTodayStr();
+    if (user.lastStepDate !== today) {
+        user.todayConvertedSteps = 0;
+        user.waterGlasses = 0;
+        user.completedQuests = [];
+        user.lastStepDate = today;
+    }
+    return today;
 }
 
 function calculateLevel(steps) {
@@ -97,18 +113,26 @@ function calculateLevel(steps) {
 
 // --- PUBLIC AUTH ROTALARI ---
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 app.post('/api/v2/register', async (req, res) => {
     try {
         const { name, email, password, height, weight } = req.body;
         if (!name || !email || !password) return res.status(400).json({ error: "Tüm alanları doldurun." });
 
-        const existingUser = await User.findOne({ email: email.toLowerCase() });
+        const cleanName = String(name).trim();
+        const cleanEmail = String(email).trim().toLowerCase();
+        if (!cleanName) return res.status(400).json({ error: "Lütfen adınızı girin." });
+        if (!EMAIL_REGEX.test(cleanEmail)) return res.status(400).json({ error: "Geçersiz e-posta formatı." });
+        if (String(password).length < 6) return res.status(400).json({ error: "Şifre en az 6 karakter olmalıdır." });
+
+        const existingUser = await User.findOne({ email: cleanEmail });
         if (existingUser) return res.status(400).json({ error: "E-posta kullanımda." });
 
         const hashedPassword = await bcrypt.hash(password, 10);
         const newUser = new User({
-            name,
-            email: email.toLowerCase(),
+            name: cleanName,
+            email: cleanEmail,
             password: hashedPassword,
             height: height || 175,
             weight: weight || 70,
@@ -126,7 +150,9 @@ app.post('/api/v2/register', async (req, res) => {
         await newUser.save();
         const token = jwt.sign({ id: newUser._id, email: newUser.email, name: newUser.name, role: newUser.role }, JWT_SECRET, { expiresIn: '7d' });
 
-        res.status(201).json({ message: "Hesap oluşturuldu!", token, user: newUser });
+        const userSafe = newUser.toObject();
+        delete userSafe.password;
+        res.status(201).json({ message: "Hesap oluşturuldu!", token, user: userSafe });
     } catch (err) {
         res.status(500).json({ error: "Kayıt hatası." });
     }
@@ -135,7 +161,8 @@ app.post('/api/v2/register', async (req, res) => {
 app.post('/api/v2/login', async (req, res) => {
     try {
         const { email, password } = req.body;
-        const user = await User.findOne({ email: email.toLowerCase() });
+        if (!email || !password) return res.status(400).json({ error: "E-posta ve şifre zorunludur." });
+        const user = await User.findOne({ email: String(email).trim().toLowerCase() });
         if (!user) return res.status(400).json({ error: "E-posta veya şifre hatalı!" });
 
         const isMatch = await bcrypt.compare(password, user.password);
@@ -150,54 +177,21 @@ app.post('/api/v2/login', async (req, res) => {
         }
 
         const token = jwt.sign({ id: user._id, email: user.email, name: user.name, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
-        res.json({ message: "Giriş başarılı!", token, user });
+        const userSafe = user.toObject();
+        delete userSafe.password;
+        res.json({ message: "Giriş başarılı!", token, user: userSafe });
     } catch (err) {
         res.status(500).json({ error: "Giriş hatası." });
     }
 });
 
-app.post('/api/v2/auth/google', async (req, res) => {
-    try {
-        const { googleToken, name, email } = req.body;
-        let userEmail = email ? email.toLowerCase() : '';
-        let userName = name || 'Google Kullanıcısı';
-
-        if (googleToken) {
-            const decoded = jwt.decode(googleToken);
-            if (decoded && decoded.email) {
-                userEmail = decoded.email.toLowerCase();
-                userName = decoded.name || userName;
-            }
-        }
-
-        if (!userEmail) return res.status(400).json({ error: "Google e-posta alınamadı." });
-
-        let user = await User.findOne({ email: userEmail });
-        if (!user) {
-            const dummyPassword = await bcrypt.hash(Math.random().toString(36), 10);
-            user = new User({
-                name: userName,
-                email: userEmail,
-                password: dummyPassword,
-                steps: 0,
-                unconvertedSteps: 0,
-                points: 0,
-                calories: 0,
-                streak: 1,
-                level: 1,
-                multiplier: 1.0,
-                lastStepDate: getTodayStr(),
-                badges: [{ name: 'Google İle Bağlandı', icon: '🌐' }]
-            });
-            await user.save();
-        }
-
-        const token = jwt.sign({ id: user._id, email: user.email, name: user.name, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
-        res.json({ message: `Google ile giriş yapıldı! Hoş geldin ${user.name}`, token, user });
-    } catch (err) {
-        res.status(500).json({ error: "Google giriş hatası." });
-    }
-});
+// NOT: '/api/v2/auth/google' rotası buradan kasıtlı olarak kaldırıldı. Eski hali
+// jwt.decode() (imza DOĞRULAMASI yapmıyor) kullanıyordu ve hatta bir googleToken
+// olmadan bile client'ın gönderdiği çıplak {email} alanına körü körüne güveniyordu
+// - yani herhangi biri "admin@adimkasasi.com" gönderip gerçek yönetici
+// hesabına şifresiz girebiliyordu. Gerçek Google Sign-In için
+// Google Cloud Console'da bir OAuth Client ID oluşturulup Google Identity
+// Services SDK + google-auth-library ile imza doğrulaması eklenmesi gerekir.
 
 app.get('/api/v2/user/me', authMiddleware, async (req, res) => {
     try {
@@ -220,16 +214,16 @@ app.get('/api/v2/user/me', authMiddleware, async (req, res) => {
 
 app.post('/api/v2/steps/add', authMiddleware, async (req, res) => {
     try {
-        const amount = parseInt(req.body.amount) || 500;
-        const user = await User.findById(req.user.id);
-        const today = getTodayStr();
-
-        if (user.lastStepDate !== today) {
-            user.todayConvertedSteps = 0;
-            user.waterGlasses = 0;
-            user.completedQuests = [];
-            user.lastStepDate = today;
+        const amount = parseInt(req.body.amount);
+        // Sensör periyodik olarak (5sn'de bir) küçük miktarlar gönderir; makul
+        // olmayan büyük bir tek seferlik miktarı reddet (manipülasyona karşı
+        // temel önlem - istemci tarafından hesaplanan herhangi bir değeri
+        // sınırsız kabul etmiyoruz).
+        if (!Number.isFinite(amount) || amount <= 0 || amount > 2000) {
+            return res.status(400).json({ error: "Geçersiz adım miktarı." });
         }
+        const user = await User.findById(req.user.id).select('-password');
+        ensureDailyReset(user);
 
         user.steps += amount;
         user.unconvertedSteps += amount;
@@ -237,7 +231,9 @@ app.post('/api/v2/steps/add', authMiddleware, async (req, res) => {
         const userWeight = user.weight || 70;
         const calFactorPerStep = userWeight * 0.00057;
         const burnedCalories = amount * calFactorPerStep;
-        user.calories += Math.round(burnedCalories * 10) / 10;
+        // Aynı ondalık birikim hatası (bkz. points) burada da oluşabilir; her
+        // eklemeden sonra yuvarlıyoruz.
+        user.calories = Math.round((user.calories + burnedCalories) * 10) / 10;
 
         const lvlData = calculateLevel(user.steps);
         user.level = lvlData.level;
@@ -253,7 +249,7 @@ app.post('/api/v2/steps/add', authMiddleware, async (req, res) => {
 app.post('/api/v2/user/update-body', authMiddleware, async (req, res) => {
     try {
         const { height, weight } = req.body;
-        const user = await User.findById(req.user.id);
+        const user = await User.findById(req.user.id).select('-password');
 
         if (height) user.height = parseInt(height);
         if (weight) user.weight = parseInt(weight);
@@ -266,9 +262,9 @@ app.post('/api/v2/user/update-body', authMiddleware, async (req, res) => {
 });
 
 // KİŞİYE ÖZEL DİYET HESAPLAMA
-app.post('/api/v2/diet/get-plan', authMiddleware, async (req, res) => {
+app.get('/api/v2/diet/get-plan', authMiddleware, async (req, res) => {
     try {
-        const user = await User.findById(req.user.id);
+        const user = await User.findById(req.user.id).select('-password');
         const height = user.height || 175;
         const weight = user.weight || 70;
 
@@ -297,13 +293,8 @@ app.post('/api/v2/diet/get-plan', authMiddleware, async (req, res) => {
 app.post('/api/v2/steps/convert', authMiddleware, async (req, res) => {
     try {
         const isDouble = req.body.isDouble === true;
-        const user = await User.findById(req.user.id);
-        const today = getTodayStr();
-
-        if (user.lastStepDate !== today) {
-            user.todayConvertedSteps = 0;
-            user.lastStepDate = today;
-        }
+        const user = await User.findById(req.user.id).select('-password');
+        ensureDailyReset(user);
 
         const DAILY_MAX_CAP = 15000;
         if (user.todayConvertedSteps >= DAILY_MAX_CAP) {
@@ -323,7 +314,7 @@ app.post('/api/v2/steps/convert', authMiddleware, async (req, res) => {
 
         user.unconvertedSteps -= convertAmount;
         user.todayConvertedSteps += convertAmount;
-        user.points += Math.round(earnedPoints * 100) / 100;
+        user.points = Math.round((user.points + earnedPoints) * 100) / 100;
         user.level = lvlData.level;
         user.multiplier = lvlData.multiplier;
 
@@ -341,13 +332,14 @@ app.post('/api/v2/steps/convert', authMiddleware, async (req, res) => {
 // SU TAKİBİ
 app.post('/api/v2/health/water', authMiddleware, async (req, res) => {
     try {
-        const user = await User.findById(req.user.id);
-        user.waterGlasses = (user.waterGlasses || 0) + 1;
-        
+        const user = await User.findById(req.user.id).select('-password');
+        ensureDailyReset(user);
+        user.waterGlasses = Math.min((user.waterGlasses || 0) + 1, 8);
+
         let bonusMsg = `💧 1 Bardak Su İçildi! (${user.waterGlasses}/8 Bardak)`;
         if (user.waterGlasses === 8 && !user.completedQuests.includes('water')) {
             user.completedQuests.push('water');
-            user.points += 0.15;
+            user.points = Math.round((user.points + 0.15) * 100) / 100;
             bonusMsg = "🎉 Tebrikler! Günlük 2 Litre Su Hedefine ulaştınız ve +0.15 YürüPara kazandınız!";
         }
 
@@ -362,7 +354,8 @@ app.post('/api/v2/health/water', authMiddleware, async (req, res) => {
 app.post('/api/v2/health/quest', authMiddleware, async (req, res) => {
     try {
         const { questType } = req.body;
-        const user = await User.findById(req.user.id);
+        const user = await User.findById(req.user.id).select('-password');
+        ensureDailyReset(user);
 
         if (user.completedQuests.includes(questType)) {
             return res.status(400).json({ error: "Bu görevi bugün zaten tamamladınız!" });
@@ -382,7 +375,7 @@ app.post('/api/v2/health/quest', authMiddleware, async (req, res) => {
         }
 
         user.completedQuests.push(questType);
-        user.points += rewardPoints;
+        user.points = Math.round((user.points + rewardPoints) * 100) / 100;
 
         await user.save();
         res.json({ message: `🌟 Tebrikler! "${title}" tamamlandı ve +${rewardPoints} YürüPara kazanıldı!`, points: user.points });
@@ -394,7 +387,7 @@ app.post('/api/v2/health/quest', authMiddleware, async (req, res) => {
 // Şans Çarkı
 app.post('/api/v2/wheel/spin', authMiddleware, async (req, res) => {
     try {
-        const user = await User.findById(req.user.id);
+        const user = await User.findById(req.user.id).select('-password');
         const today = getTodayStr();
 
         if (user.lastWheelSpinDate === today) {
@@ -404,7 +397,7 @@ app.post('/api/v2/wheel/spin', authMiddleware, async (req, res) => {
         const prizes = [0.05, 0.10, 0.15, 0.20, 0.25];
         const wonPoints = prizes[Math.floor(Math.random() * prizes.length)];
 
-        user.points += wonPoints;
+        user.points = Math.round((user.points + wonPoints) * 100) / 100;
         user.lastWheelSpinDate = today;
         await user.save();
 
@@ -427,12 +420,22 @@ app.post('/api/v2/donate', authMiddleware, async (req, res) => {
     try {
         const { charityName, pointsToDonate } = req.body;
         const points = parseFloat(pointsToDonate);
+        // Negatif/geçersiz bir değer göndermek "bağış" adı altında bakiyeye puan
+        // EKLENMESİNE yol açabilirdi (user.points -= negatifSayı === toplama).
+        if (!charityName || !Number.isFinite(points) || points <= 0) {
+            return res.status(400).json({ error: "Geçersiz bağış miktarı." });
+        }
 
-        const user = await User.findById(req.user.id);
-        if (user.points < points) return res.status(400).json({ error: "Yetersiz bakiye!" });
+        const user = await User.findById(req.user.id).select('-password');
+        // Ondalık toplama/çıkarma birikimi kayan nokta hatası üretir (ör. 1.00
+        // yerine 0.9999999999999999 saklanabilir); 2 ondalığa yuvarlayarak hem
+        // önceden birikmiş sapmayı düzeltiyoruz hem de "bakiyem yetiyor görünüyor
+        // ama reddediliyor" şikayetini engelliyoruz.
+        const currentPoints = Math.round(user.points * 100) / 100;
+        if (currentPoints < points) return res.status(400).json({ error: "Yetersiz bakiye!" });
 
-        user.points -= points;
-        user.totalDonations += points;
+        user.points = Math.round((currentPoints - points) * 100) / 100;
+        user.totalDonations = Math.round((user.totalDonations + points) * 100) / 100;
 
         const donation = new Donation({
             userId: user._id,
@@ -464,10 +467,13 @@ app.post('/api/v2/rewards/claim', authMiddleware, async (req, res) => {
         const reward = await Reward.findById(rewardId);
         if (!reward || reward.stock <= 0) return res.status(400).json({ error: "Stokta yok." });
 
-        const user = await User.findById(req.user.id);
-        if (user.points < reward.pointsCost) return res.status(400).json({ error: `Yetersiz YürüPara! Bu ürün için ${reward.pointsCost} YP gereklidir.` });
+        const user = await User.findById(req.user.id).select('-password');
+        // Bkz. /api/v2/donate: ondalık birikim hatasına karşı yuvarlanmış bakiye
+        // ile karşılaştırıyoruz.
+        const currentPoints = Math.round(user.points * 100) / 100;
+        if (currentPoints < reward.pointsCost) return res.status(400).json({ error: `Yetersiz YürüPara! Bu ürün için ${reward.pointsCost} YP gereklidir.` });
 
-        user.points -= reward.pointsCost;
+        user.points = Math.round((currentPoints - reward.pointsCost) * 100) / 100;
 
         if (reward.code === 'DIET-PLAN-CUSTOM') {
             const uniqueCode = `DIET-UNLOCK-${Math.floor(100000 + Math.random() * 900000)}`;

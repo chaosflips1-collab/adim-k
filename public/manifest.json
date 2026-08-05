@@ -1,11 +1,13 @@
 {
   "short_name": "AdımKasası",
   "name": "AdımKasası PRO - Adımlarını Ödüle Dönüştür",
+  "id": "/index.html",
   "icons": [
     {
-      "src": "https://upload.wikimedia.org/wikipedia/commons/ thumb/7/7b/Running_icon.svg/512px-Running_icon.svg.png",
-      "sizes": "512x512",
-      "type": "image/png"
+      "src": "/assets/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
     }
   ],
   "start_url": "/index.html",
