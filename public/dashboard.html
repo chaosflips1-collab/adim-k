@@ -515,6 +515,15 @@
             navigator.serviceWorker.register('/sw.js').catch(() => {});
         }
 
+        // Google OAuth geri dönüşü: sunucu /auth/google/callback içinde başarılı
+        // girişten sonra buraya ?token=... ile yönlendirir. Token'ı localStorage'a
+        // taşıyıp URL'den temizliyoruz (adres çubuğunda/geçmişte kalmasın).
+        const urlToken = new URLSearchParams(window.location.search).get('token');
+        if (urlToken) {
+            localStorage.setItem('token_v2', urlToken);
+            history.replaceState(null, '', '/dashboard.html');
+        }
+
         const token = localStorage.getItem('token_v2');
         if (!token) window.location.href = '/index.html';
 

@@ -1,6 +1,12 @@
 const jwt = require('jsonwebtoken');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'adimkasasi_pro_v2_secret_key_2026_super_secure';
+// Sabit bir yedek değer BULUNDURMUYORUZ: kaynak koda yazılan herhangi bir
+// "gizli" değer, repoya erişimi olan herkes için artık gizli değildir ve
+// keyfi (ör. admin rolüne sahip) JWT sahteciliğine izin verir.
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+    console.error('❌ JWT_SECRET ortam değişkeni tanımlı değil. Kimlik doğrulama güvenli değil.');
+}
 
 module.exports = function (req, res, next) {
     const authHeader = req.headers['authorization'];

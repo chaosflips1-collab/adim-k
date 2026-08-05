@@ -3,6 +3,8 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
+const { OAuth2Client } = require('google-auth-library');
 require('dotenv').config();
 
 const User = require('./models/User');
@@ -11,6 +13,17 @@ const Claim = require('./models/Claim');
 const Donation = require('./models/Donation');
 const authMiddleware = require('./middleware/auth');
 const { JWT_SECRET } = authMiddleware;
+
+// Gerçek Google Sign-In (Authorization Code akışı): kimlik doğrulaması
+// google-auth-library ile Google'ın kendi sunucularına karşı doğrulanır.
+// Google Cloud Console'da tanımlı "Authorized redirect URI" ile
+// GOOGLE_CALLBACK_URL BİREBİR eşleşmelidir.
+const googleClient = (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)
+    ? new OAuth2Client(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET, process.env.GOOGLE_CALLBACK_URL)
+    : null;
+if (!googleClient) {
+    console.warn('⚠️ Google OAuth ortam değişkenleri eksik, Google ile giriş devre dışı.');
+}
 
 const app = express();
 app.use(express.json());
@@ -185,13 +198,62 @@ app.post('/api/v2/login', async (req, res) => {
     }
 });
 
-// NOT: '/api/v2/auth/google' rotası buradan kasıtlı olarak kaldırıldı. Eski hali
-// jwt.decode() (imza DOĞRULAMASI yapmıyor) kullanıyordu ve hatta bir googleToken
-// olmadan bile client'ın gönderdiği çıplak {email} alanına körü körüne güveniyordu
-// - yani herhangi biri "admin@adimkasasi.com" gönderip gerçek yönetici
-// hesabına şifresiz girebiliyordu. Gerçek Google Sign-In için
-// Google Cloud Console'da bir OAuth Client ID oluşturulup Google Identity
-// Services SDK + google-auth-library ile imza doğrulaması eklenmesi gerekir.
+// Gerçek Google Sign-In: tarayıcıyı Google'ın onay ekranına yönlendirir.
+// (Önceki sahte sürüm jwt.decode() kullanıyordu - imza DOĞRULAMASI yapmıyordu
+// ve hatta bir token olmadan bile client'ın gönderdiği çıplak {email} alanına
+// körü körüne güveniyordu, yani herhangi biri "admin@adimkasasi.com" gönderip
+// gerçek yönetici hesabına şifresiz girebiliyordu.)
+app.get('/api/v2/auth/google', (req, res) => {
+    if (!googleClient) return res.status(503).send('Google ile giriş şu anda yapılandırılmamış.');
+    const url = googleClient.generateAuthUrl({
+        access_type: 'online',
+        scope: ['profile', 'email'],
+        prompt: 'select_account'
+    });
+    res.redirect(url);
+});
+
+// Google Cloud Console'da tanımlı "Authorized redirect URI" ile bu yolun
+// (GOOGLE_CALLBACK_URL) BİREBİR aynı olması gerekir.
+app.get('/auth/google/callback', async (req, res) => {
+    try {
+        if (!googleClient) return res.redirect('/index.html?googleError=1');
+        const { code } = req.query;
+        if (!code) return res.redirect('/index.html?googleError=1');
+
+        const { tokens } = await googleClient.getToken(code);
+        const ticket = await googleClient.verifyIdToken({
+            idToken: tokens.id_token,
+            audience: process.env.GOOGLE_CLIENT_ID
+        });
+        const payload = ticket.getPayload();
+        if (!payload || !payload.email) return res.redirect('/index.html?googleError=1');
+
+        const email = payload.email.toLowerCase();
+        const name = payload.name || email.split('@')[0];
+
+        let user = await User.findOne({ email });
+        if (!user) {
+            // Google ile gelen kullanıcı hiçbir zaman bir şifre belirlemez;
+            // şema password alanını zorunlu kıldığı için rastgele, asla
+            // kullanıcıya gösterilmeyen bir değer üretip hashliyoruz.
+            const dummyPassword = await bcrypt.hash(crypto.randomBytes(24).toString('hex'), 10);
+            user = await User.create({
+                name,
+                email,
+                password: dummyPassword,
+                lastStepDate: getTodayStr(),
+                badges: [{ name: 'Google İle Bağlandı', icon: '🌐' }]
+            });
+        }
+
+        const token = jwt.sign({ id: user._id, email: user.email, name: user.name, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
+        res.redirect(`/dashboard.html?token=${encodeURIComponent(token)}`);
+    } catch (err) {
+        console.error('Google OAuth callback hatası:', err.message);
+        res.redirect('/index.html?googleError=1');
+    }
+});
 
 app.get('/api/v2/user/me', authMiddleware, async (req, res) => {
     try {
