@@ -852,7 +852,7 @@
             }
         }
 
-        // BİYOMEKANİK PEDOMETRE VE HASSAS YÜRÜYÜŞ SENSÖRÜ
+        // 🍎 iOS SAFARI & ANDROID ÇAPRAZ PLATFORM BİYOMEKANİK PEDOMETRE
         let isSensorActive = false;
         let lastStepTime = 0;
         let consecutiveSteps = 0;
@@ -861,6 +861,7 @@
         async function toggleStepSensor() {
             if (isSensorActive) {
                 window.removeEventListener('devicemotion', handleMotion);
+                window.removeEventListener('deviceorientation', handleOrientation);
                 isSensorActive = false;
                 consecutiveSteps = 0;
                 document.getElementById('sensorBtn').textContent = '📱 CANLI SENSÖRÜ BAŞLAT (Yürürken Say)';
@@ -869,13 +870,18 @@
                 return;
             }
 
+            // iOS 13+ Safari Özel İzin İsteği Protokolü
             if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
                 try {
-                    const response = await DeviceMotionEvent.requestPermission();
-                    if (response === 'granted') {
+                    const motionPerm = await DeviceMotionEvent.requestPermission();
+                    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                        try { await DeviceOrientationEvent.requestPermission(); } catch (oe) {}
+                    }
+
+                    if (motionPerm === 'granted') {
                         startMotionListener();
                     } else {
-                        showAlert('Sensör erişim izni verilmedi.');
+                        showAlert('🍎 iOS Hareket ve Yönelim izni verilmedi. Lütfen izin verin.');
                     }
                 } catch (e) {
                     startMotionListener();
@@ -887,26 +893,39 @@
 
         function startMotionListener() {
             window.removeEventListener('devicemotion', handleMotion);
-            window.addEventListener('devicemotion', handleMotion, true);
+            window.removeEventListener('deviceorientation', handleOrientation);
+            
+            window.addEventListener('devicemotion', handleMotion, false);
+            window.addEventListener('deviceorientation', handleOrientation, false);
+            
             isSensorActive = true;
             document.getElementById('sensorBtn').textContent = '🟢 YÜRÜYÜŞ SENSÖRÜ AKTİF (Yürüyün)';
             document.getElementById('sensorBtn').className = 'm-btn m-btn-gold';
-            showAlert('Sensör aktif! Telefonunuzla yürümeye başlayabilirsiniz.');
+            showAlert('🍏 iOS / Android Sensörü Aktif! Telefonunuzla yürümeye başlayabilirsiniz.');
+        }
+
+        function handleOrientation(e) {
+            // iOS Safari Sensör Uyanık Tutma Dinleyicisi
         }
 
         function handleMotion(e) {
-            // iOS ve Android Hibrit İvme Desteği
-            const acc = e.accelerationIncludingGravity || e.acceleration;
-            if (!acc) return;
+            let mag = 0;
 
-            const x = acc.x || 0;
-            const y = acc.y || 0;
-            const z = acc.z || 0;
+            // iOS Safari ve Android Hibrit İvme Normalizasyonu
+            if (e.accelerationIncludingGravity && e.accelerationIncludingGravity.x !== null) {
+                const x = e.accelerationIncludingGravity.x || 0;
+                const y = e.accelerationIncludingGravity.y || 0;
+                const z = e.accelerationIncludingGravity.z || 0;
+                mag = Math.sqrt(x * x + y * y + z * z);
+            } else if (e.acceleration && e.acceleration.x !== null) {
+                const x = e.acceleration.x || 0;
+                const y = e.acceleration.y || 0;
+                const z = e.acceleration.z || 0;
+                mag = Math.sqrt(x * x + y * y + z * z) + 9.81; // Lineer ivmeyi toplam ivme ölçeğine normalize et
+            }
 
-            if (x === 0 && y === 0 && z === 0) return;
+            if (mag === 0) return;
 
-            // Vektörel İvme Hesabı (Magnitude)
-            const mag = Math.sqrt(x * x + y * y + z * z);
             const now = Date.now();
             const timeDiff = now - lastStepTime;
 
@@ -914,15 +933,15 @@
             const deltaMag = Math.abs(mag - lastMag);
             lastMag = mag;
 
-            // 1. DİNAMİK İVME FİLTRESİ (10.1 m/s^2 ile 17.5 m/s^2 arası veya Net Hareket Delta > 1.1)
-            const isAccValid = (mag >= 10.1 && mag <= 17.5) || (deltaMag >= 1.1 && deltaMag <= 8.0);
+            // 1. iOS / ANDROID BİLEŞİK İVME FİLTRESİ (9.9 m/s^2 - 17.5 m/s^2 veya Net Delta > 0.95)
+            const isAccValid = (mag >= 9.9 && mag <= 17.5) || (deltaMag >= 0.95 && deltaMag <= 8.5);
 
             if (isAccValid) {
-                // 2. YÜRÜYÜŞ RİTİM VE FREKANS FİLTRESİ (280ms - 850ms)
-                if (timeDiff >= 280 && timeDiff <= 850) {
+                // 2. KADANS VE RİTİM FREKANSI (260ms - 880ms)
+                if (timeDiff >= 260 && timeDiff <= 880) {
                     consecutiveSteps++;
 
-                    // 3. 2-ADIM RİTİM TAMPONU (Rastgele sarsıntıları eler, yürüyüşü anında doğrular)
+                    // 3. 2-ADIM RİTİM TAMPONU (Sahte kıpırdamaları eler, yürüyüşü anında doğrular)
                     if (consecutiveSteps >= 2) {
                         lastStepTime = now;
                         addSteps(1);
@@ -937,7 +956,6 @@
                         }
                     }
                 } else if (timeDiff > 1100) {
-                    // Duraksamada ritmi sıfırla
                     consecutiveSteps = 0;
                     lastStepTime = now;
                 }
