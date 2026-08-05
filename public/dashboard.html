@@ -892,20 +892,28 @@
 
         const SMA_WINDOW_SIZE = 5;          // hızlı titreşim/gürültü filtresi (~125ms @40Hz)
         const BASELINE_WINDOW_SIZE = 40;    // yavaş taban çizgisi: yerçekimi/eğim driftini süzer (~1sn)
-        const MIN_STEP_INTERVAL_MS = 280;   // ~214 adım/dk üst sınır (koşu dahil çift sayımı engeller)
-        const MAX_STEP_INTERVAL_MS = 1400;  // çok yavaş yürüyüş için alt sınır
+        const MIN_STEP_INTERVAL_MS = 250;   // ~240 adım/dk üst sınır (koşu dahil çift sayımı engeller)
+        const MAX_STEP_INTERVAL_MS = 1500;  // çok yavaş yürüyüş için alt sınır
         const IDLE_RESET_MS = 2500;         // bu süre adım gelmezse genlik geçmişi sıfırlanır
-        const MIN_DYNAMIC_THRESHOLD = 0.9;  // m/s², cep/bilek titremesini eleyen taban eşik
-        const MAX_DYNAMIC_THRESHOLD = 4.5;  // tek bir sert darbenin eşiği bozmaması için tavan
-        const AMPLITUDE_HISTORY_SIZE = 6;
+        // ÖNEMLİ: eşik artık SADECE onaylanmış adımların genliğinden değil, telefonun o an
+        // ürettiği HAM sinyalin sürekli gözlemlenen genliğinden hesaplanıyor. Eski sürüm
+        // sadece onaylanmış adımlardan öğrendiği için, eğer telefon (ör. gevşek cepte)
+        // hiçbir zaman ilk sabit eşiği (0.9) geçemiyorsa sistem kalıcı olarak kilitleniyordu
+        // - gerçek kullanıcıların "sensör hiç çalışmıyor" şikayetinin ana sebebi buydu.
+        const MIN_DYNAMIC_THRESHOLD = 0.5;  // m/s², daha toleranslı taban eşik
+        const MAX_DYNAMIC_THRESHOLD = 5.0;  // tek bir sert darbenin eşiği bozmaması için tavan
+        const VARIANCE_WINDOW_SIZE = 30;    // sürekli genlik takibi için pencere (onaydan bağımsız)
         const SHOCK_REJECT_MAGNITUDE = 40;  // düşürme/çarpma gibi anlık aşırı sıçramaları ele
-        const RHYTHM_WINDOW_SIZE = 6;          // adım saymadan önce incelenen ardışık döngü penceresi
-        const RHYTHM_CV_TOLERANCE = 0.12;      // pencere içindeki sürelerin varyasyon katsayısı (std/ortalama) bu değeri aşamaz
+        // Eski sürüm bir adımı saymadan önce art arda 6 döngünün neredeyse robotik
+        // düzenlilikte (varyasyon ≤%12) olmasını şart koşuyordu - gerçek insan yürüyüşü bu
+        // kadar düzenli değildir, çoğu kullanıcı ilk adımı bile geçemiyordu. 2 ardışık
+        // makul-kadanslı döngü, tek seferlik rastgele titremeyi elemek için yeterli.
+        const CONSECUTIVE_CYCLES_REQUIRED = 2;
 
         let rawSignalWindow = [];
         let baselineWindow = [];
-        let recentAmplitudes = [];
-        let intervalHistory = [];  // son birkaç döngünün süresi (ritim/rastgelelik ayrımı için)
+        let recentDeviationRange = []; // ham |sapma| örnekleri - eşik buradan sürekli güncellenir
+        let consecutiveValidCycles = 0;
         let stepPhase = 'low';   // 'low' | 'high' — histerezis durum makinesi
         let phaseExtreme = 0;
 
@@ -964,9 +972,12 @@
         }
 
         function getDynamicThreshold() {
-            if (recentAmplitudes.length < 3) return MIN_DYNAMIC_THRESHOLD;
-            const avg = recentAmplitudes.reduce((a, b) => a + b, 0) / recentAmplitudes.length;
-            return Math.min(MAX_DYNAMIC_THRESHOLD, Math.max(MIN_DYNAMIC_THRESHOLD, avg * 0.45));
+            // Eşik, telefonun O AN ürettiği ham hareketin gözlemlenen genliğine göre
+            // SÜREKLİ güncellenir (onaylanmış bir adım şartı YOK). Bu sayede telefon
+            // yürüme hareketiyle titreşmeye başladığı an eşik buna uyum sağlar.
+            if (recentDeviationRange.length < 8) return MIN_DYNAMIC_THRESHOLD;
+            const maxDev = Math.max(...recentDeviationRange);
+            return Math.min(MAX_DYNAMIC_THRESHOLD, Math.max(MIN_DYNAMIC_THRESHOLD, maxDev * 0.55));
         }
 
         function registerStep(amplitude) {
@@ -980,9 +991,6 @@
             if (totalEl) totalEl.textContent = localStepsBase.toLocaleString('tr-TR');
             if (unconvEl) unconvEl.textContent = localUnconvertedBase.toLocaleString('tr-TR');
             persistPendingSteps();
-
-            recentAmplitudes.push(amplitude);
-            if (recentAmplitudes.length > AMPLITUDE_HISTORY_SIZE) recentAmplitudes.shift();
 
             const btn = document.getElementById('sensorBtn');
             if (btn) {
@@ -1029,8 +1037,8 @@
             restorePendingSteps();
             rawSignalWindow = [];
             baselineWindow = [];
-            recentAmplitudes = [];
-            intervalHistory = [];
+            recentDeviationRange = [];
+            consecutiveValidCycles = 0;
             stepPhase = 'low';
             phaseExtreme = 0;
             lastCycleTime = 0;
@@ -1100,6 +1108,14 @@
             const baseline = baselineWindow.reduce((a, b) => a + b, 0) / baselineWindow.length;
             const deviation = smaMag - baseline;
 
+            // Eşiği HER örnekte güncelliyoruz: bir adım onaylanmış olsun olmasın,
+            // telefon o an ne kadar hareket ediyorsa eşik ona göre ayarlanır. Böylece
+            // telefon yürüme hareketiyle titreşmeye başladığı an sistem kendini
+            // kalibre eder; önceki sürümdeki "onaylanmış adım olmadan eşik asla
+            // düşmez" kısır döngüsü ortadan kalkar.
+            recentDeviationRange.push(Math.abs(deviation));
+            if (recentDeviationRange.length > VARIANCE_WINDOW_SIZE) recentDeviationRange.shift();
+
             const threshold = getDynamicThreshold();
             const now = Date.now();
 
@@ -1116,40 +1132,27 @@
                 const amplitude = phaseExtreme - deviation;
                 // lastCycleTime henüz hiç ayarlanmadıysa (sensör az önce başladı) bunu ilk
                 // döngü olarak kabul et; aksi halde Date.now() - 0 devasa bir sayı çıkıp
-                // üst sınırı aşar ve referans hiç güncellenmediği için TÜM adımları
-                // sonsuza kadar kilitler.
+                // üst sınırı aşar ve TÜM adımları sonsuza kadar kilitler.
                 const timeDiff = lastCycleTime === 0 ? MIN_STEP_INTERVAL_MS : now - lastCycleTime;
                 const isValidCadence = timeDiff >= MIN_STEP_INTERVAL_MS && timeDiff <= MAX_STEP_INTERVAL_MS;
 
                 if (amplitude >= threshold && isValidCadence) {
-                    // Referans noktasını geçerli genlik+zamanlamaya sahip HER döngüde
-                    // güncelliyoruz. Aksi halde reddedilen bir döngünün süresi bir
-                    // sonrakine eklenir, aralık yanlışlıkla "2 katı" görünür ve ritim
-                    // penceresi gerçek bir yürüyüşte bile asla dolmaz.
                     lastCycleTime = now;
-
-                    intervalHistory.push(timeDiff);
-                    if (intervalHistory.length > RHYTHM_WINDOW_SIZE) intervalHistory.shift();
-
-                    // Sallanma/titremeyi elemek için tek bir ardışık çift yetmez: son
-                    // RHYTHM_WINDOW_SIZE döngünün TAMAMI istatistiksel olarak tutarlı
-                    // (düşük varyasyon katsayılı) olmalı. Yumuşatılmış rastgele gürültü
-                    // ardışık 1-2 çift arasında şans eseri benzer aralıklar üretebilir,
-                    // ama daha uzun bir pencerede düşük varyansı sürdüremez; gerçek
-                    // yürüyüş adımları ise doğası gereği düzenlidir.
-                    if (intervalHistory.length === RHYTHM_WINDOW_SIZE) {
-                        const mean = intervalHistory.reduce((a, b) => a + b, 0) / intervalHistory.length;
-                        const variance = intervalHistory.reduce((a, b) => a + (b - mean) ** 2, 0) / intervalHistory.length;
-                        const cv = Math.sqrt(variance) / mean;
-                        if (cv <= RHYTHM_CV_TOLERANCE) {
-                            registerStep(amplitude);
-                        }
+                    consecutiveValidCycles++;
+                    // Tek seferlik rastgele bir sarsıntının adım sanılmaması için en az
+                    // 2 ardışık geçerli-kadanslı döngü şart koşuyoruz - ama eski
+                    // sürümün 6 döngü/%12 varyasyon şartı kadar katı değil; gerçek
+                    // yürüyüşün doğal düzensizliğinde bile çalışır.
+                    if (consecutiveValidCycles >= CONSECUTIVE_CYCLES_REQUIRED) {
+                        registerStep(amplitude);
                     }
                 } else if (timeDiff > IDLE_RESET_MS) {
-                    // Uzun süredir hiç geçerli döngü yok: durdu/oturdu, her şeyi sıfırla
-                    recentAmplitudes = [];
-                    intervalHistory = [];
+                    // Uzun süredir hiç geçerli döngü yok: durdu/oturdu, ritmi sıfırla
+                    consecutiveValidCycles = 0;
                     lastCycleTime = 0;
+                } else {
+                    // Kadans/genlik şartını sağlamayan bir döngü ritmi bozar
+                    consecutiveValidCycles = 0;
                 }
                 stepPhase = 'low';
             }
