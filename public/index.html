@@ -329,6 +329,24 @@
         </div>
     </div>
 
+    <!-- KAYIT SONRASI İZİN & VERİ KORUMA ONAY EKRANI -->
+    <div id="onboardingOverlay" class="hidden" style="position:fixed; top:0; left:0; width:100%; height:100%; background:linear-gradient(160deg,#4c1d95,#1e1b4b 60%); z-index:9998; align-items:center; justify-content:center; padding:24px;">
+        <div style="max-width:400px; width:100%; text-align:left;">
+            <div id="onboardingStep1">
+                <div style="font-size:36px; margin-bottom:16px;">🔔</div>
+                <h2 style="font-size:21px; font-weight:800; margin-bottom:16px; line-height:1.35; -webkit-text-fill-color:#fff; background:none;">Adımlarınızı takip etmeye başlayacağız. İlerlemenize yardımcı olabilmemiz için anlık bildirimler almak ister misiniz?</h2>
+                <button type="button" class="action-btn" onclick="handleNotificationChoice(true)">Evet lütfen</button>
+                <button type="button" class="action-btn" style="background:rgba(255,255,255,0.1); box-shadow:none; margin-top:10px;" onclick="handleNotificationChoice(false)">Hayır, teşekkürler</button>
+            </div>
+            <div id="onboardingStep2" class="hidden">
+                <div style="font-size:36px; margin-bottom:16px;">🛡️</div>
+                <h2 style="font-size:20px; font-weight:800; margin-bottom:10px; -webkit-text-fill-color:#fff; background:none;">Verileriniz Güvende</h2>
+                <p style="font-size:13px; color:#cbd5e1; line-height:1.5; margin-bottom:18px;">Ad, e-posta, boy/kilo ve adım verileriniz yalnızca hesabınızı yönetmek ve kişiselleştirilmiş hesaplamalar için kullanılır, üçüncü şahıslarla asla paylaşılmaz. Devam ederek <a href="#" onclick="openLegalModal('privacy'); return false;" style="color:#c084fc;">Gizlilik Politikası</a>'nı ve <a href="#" onclick="openLegalModal('kvkk'); return false;" style="color:#c084fc;">KVKK Aydınlatma Metni</a>'ni kabul etmiş olursunuz.</p>
+                <button type="button" class="action-btn" onclick="acceptPrivacyAndFinish()">Kabul Ediyorum, Devam Et</button>
+            </div>
+        </div>
+    </div>
+
     <!-- LEGAL POPUP MODAL -->
     <div id="legalModal" style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(2,6,23,0.85); backdrop-filter:blur(10px); display:none; align-items:center; justify-content:center; z-index:9999; padding:20px;">
         <div style="background:#1e1b4b; border:1px solid rgba(255,255,255,0.2); border-radius:24px; padding:20px; max-width:400px; width:100%; max-height:80vh; overflow-y:auto; font-size:12px; color:#cbd5e1;">
@@ -346,6 +364,9 @@
         if (localStorage.getItem('token_v2')) {
             window.location.href = '/dashboard.html';
         }
+
+        // Davet linkiyle gelindiyse (?ref=KOD) kaydı o kişiye bağlamak için kodu sakla.
+        const refCode = new URLSearchParams(window.location.search).get('ref') || '';
 
         const registerContainer = document.getElementById('registerContainer');
         const loginContainer = document.getElementById('loginContainer');
@@ -385,13 +406,14 @@
                 const res = await fetch('/api/v2/register', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name, email, password, height, weight })
+                    body: JSON.stringify({ name, email, password, height, weight, refCode })
                 });
                 const data = await res.json();
                 if (res.ok) {
                     localStorage.setItem('token_v2', data.token);
                     showMsg('Kayıt başarılı!');
-                    setTimeout(() => window.location.href = '/dashboard.html', 700);
+                    // Dashboard'a atmadan önce izin/veri koruma onay ekranını göster.
+                    setTimeout(() => startOnboarding(data.token), 500);
                 } else {
                     showMsg(data.error, true);
                 }
@@ -399,6 +421,33 @@
                 showMsg('Sunucu hatası!', true);
             }
         });
+
+        let pendingOnboardingToken = null;
+
+        function startOnboarding(newToken) {
+            pendingOnboardingToken = newToken;
+            document.getElementById('onboardingStep1').classList.remove('hidden');
+            document.getElementById('onboardingStep2').classList.add('hidden');
+            document.getElementById('onboardingOverlay').style.display = 'flex';
+        }
+
+        async function handleNotificationChoice(wantsNotif) {
+            if (wantsNotif && 'Notification' in window && typeof Notification.requestPermission === 'function') {
+                try { await Notification.requestPermission(); } catch (e) {}
+            }
+            document.getElementById('onboardingStep1').classList.add('hidden');
+            document.getElementById('onboardingStep2').classList.remove('hidden');
+        }
+
+        async function acceptPrivacyAndFinish() {
+            try {
+                await fetch('/api/v2/user/accept-privacy', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${pendingOnboardingToken}` }
+                });
+            } catch (e) {}
+            window.location.href = '/dashboard.html';
+        }
 
         document.getElementById('loginForm').addEventListener('submit', async (e) => {
             e.preventDefault();

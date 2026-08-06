@@ -353,6 +353,21 @@
                     </div>
                 </div>
 
+                <div class="mobile-stats-grid">
+                    <div class="m-list-card" style="text-align:center; margin-bottom:0;">
+                        <div style="font-size:22px;">🎁</div>
+                        <strong style="font-size:12px; display:block; margin:4px 0;">Davet Et ve Kazan</strong>
+                        <div style="font-size:10px; color:#94a3b8; margin-bottom:8px;">Her davette +10 YP</div>
+                        <button class="m-btn m-btn-gold" style="width:100%; font-size:11px; padding:8px;" onclick="openReferralModal()">Başlayın</button>
+                    </div>
+                    <div class="m-list-card" style="text-align:center; margin-bottom:0;">
+                        <div style="font-size:22px;">📺</div>
+                        <strong style="font-size:12px; display:block; margin:4px 0;">Reklam İzle Kazan</strong>
+                        <div style="font-size:10px; color:#94a3b8; margin-bottom:8px;" id="adWatchCountText">0 / 3 bugün</div>
+                        <button class="m-btn m-btn-blue" style="width:100%; font-size:11px; padding:8px;" onclick="openAdWatchModal()">İzle</button>
+                    </div>
+                </div>
+
             </div>
 
             <!-- TAB 2: LİDERLİK -->
@@ -442,7 +457,30 @@
                 <div id="storeContainer"></div>
             </div>
 
-            <!-- TAB 6: PROFİL -->
+            <!-- TAB 6: OYUNLAR -->
+            <div id="tabGames" class="tab-page hidden">
+                <h3 style="font-size:15px; margin-bottom:4px;">🎮 Basit Oyunlar</h3>
+                <p style="font-size:11px; color:#94a3b8; margin-bottom:8px;">Oyna, süreyle bağlı YürüPara kazan! (1dk: 0.10 YP · 2dk: 0.20 YP · 3dk: 0.30 YP)</p>
+                <div style="font-size:10px; color:#94a3b8; margin-bottom:10px;" id="gamesTodayText">Bugün: 0 / 5 ödül hakkı kullanıldı</div>
+
+                <div class="m-list-card" style="display:flex; align-items:center; gap:10px;">
+                    <div style="font-size:28px; flex-shrink:0;">🎯</div>
+                    <div style="flex:1; min-width:0;"><strong style="font-size:13px; display:block;">Hedef Vur</strong><span style="font-size:10px; color:#94a3b8;">Hedefi ne kadar hızlı vurabilirsin?</span></div>
+                    <button class="m-btn m-btn-primary" style="padding:8px 14px; font-size:11px; flex-shrink:0;" onclick="openGame('target')">Oyna</button>
+                </div>
+                <div class="m-list-card" style="display:flex; align-items:center; gap:10px;">
+                    <div style="font-size:28px; flex-shrink:0;">⚡</div>
+                    <div style="flex:1; min-width:0;"><strong style="font-size:13px; display:block;">Reaksiyon Ustası</strong><span style="font-size:10px; color:#94a3b8;">Yeşil yanınca hemen dokun!</span></div>
+                    <button class="m-btn m-btn-gold" style="padding:8px 14px; font-size:11px; flex-shrink:0;" onclick="openGame('reaction')">Oyna</button>
+                </div>
+                <div class="m-list-card" style="display:flex; align-items:center; gap:10px;">
+                    <div style="font-size:28px; flex-shrink:0;">🔢</div>
+                    <div style="flex:1; min-width:0;"><strong style="font-size:13px; display:block;">Hızlı Toplama</strong><span style="font-size:10px; color:#94a3b8;">Doğru toplamı bul, hızlı ol!</span></div>
+                    <button class="m-btn m-btn-blue" style="padding:8px 14px; font-size:11px; flex-shrink:0;" onclick="openGame('math')">Oyna</button>
+                </div>
+            </div>
+
+            <!-- TAB 7: PROFİL -->
             <div id="tabProfile" class="tab-page hidden">
                 <h3 style="font-size:15px; margin-bottom:10px;">👤 Profil & Dijital Kodlarım</h3>
 
@@ -496,6 +534,7 @@
             <button class="nav-item" onclick="switchNav('health')"><span class="nav-icon">💧</span><span>Sağlık</span></button>
             <button class="nav-item" onclick="switchNav('charity')"><span class="nav-icon">🐾</span><span>Bağış</span></button>
             <button class="nav-item" onclick="switchNav('store')"><span class="nav-icon">🛒</span><span>Dijital Mağaza</span></button>
+            <button class="nav-item" onclick="switchNav('games')"><span class="nav-icon">🎮</span><span>Oyunlar</span></button>
             <button class="nav-item" onclick="switchNav('profile')"><span class="nav-icon">👤</span><span>Profil</span></button>
         </div>
 
@@ -522,6 +561,65 @@
                 <div style="font-size:10px; color:#cbd5e1; margin-top:4px;">Reklamın bitmesine kalan süre</div>
             </div>
             <div style="font-size:10px; color:#34d399; font-weight:700;">⚡ Reklam tamamlandığında 2x YürüPara hesabınıza aktarılacaktır!</div>
+        </div>
+    </div>
+
+    <!-- DAVET ET VE KAZAN MODALI -->
+    <div id="referralModal" class="modal hidden">
+        <div class="modal-card">
+            <h3 style="font-size:16px;">🎁 Davet Et ve Kazan</h3>
+            <p style="font-size:11px; color:#94a3b8; margin:8px 0;">Arkadaşını davet et, ilk adımlarını dönüştürdüğünde <strong style="color:#34d399;">+10 YürüPara</strong> kazan! (Haftada en fazla 10 kişi)</p>
+            <div style="background:rgba(255,255,255,0.06); border-radius:14px; padding:14px; margin:10px 0;">
+                <div style="font-size:10px; color:#94a3b8; text-transform:uppercase; font-weight:700;">Davet Kodun</div>
+                <div style="font-size:22px; font-weight:800; color:#c084fc; letter-spacing:2px; margin:4px 0;" id="referralCodeText">------</div>
+                <button class="m-btn m-btn-secondary" style="width:100%; font-size:11px; margin-top:6px;" id="copyReferralLinkBtn">🔗 Davet Linkini Kopyala</button>
+            </div>
+            <div style="display:flex; justify-content:space-between; font-size:11px; color:#cbd5e1; margin-bottom:4px;">
+                <span>Bu hafta</span><span id="referralWeekText">0 / 10</span>
+            </div>
+            <div class="cap-bar" style="margin-bottom:10px;"><div class="cap-fill" id="referralWeekFill" style="background:linear-gradient(90deg,#f59e0b,#ef4444);"></div></div>
+            <div style="font-size:10px; color:#94a3b8;">Toplam davet: <strong id="referralTotalText">0</strong> · Ödül kazanılan: <strong id="referralRewardedText">0</strong></div>
+            <button class="m-btn m-btn-secondary" style="width:100%; margin-top:12px; font-size:11px;" onclick="closeModal('referralModal')">Kapat</button>
+        </div>
+    </div>
+
+    <!-- REKLAM İZLE KAZAN MODALI (simüle - AdMob SDK'sı bir web sitesinde çalışmaz) -->
+    <div id="adWatchModal" class="modal hidden">
+        <div class="modal-card">
+            <div style="font-size:40px; margin-bottom:6px;">📺</div>
+            <h3 style="font-size:15px; color:#c084fc;">Ödüllü Reklam</h3>
+            <p style="font-size:11px; color:#94a3b8; margin:6px 0 12px 0;">Reklam oynatılıyor...</p>
+            <div style="background:rgba(255,255,255,0.06); border-radius:16px; padding:16px; margin-bottom:12px;">
+                <div style="font-size:28px; font-weight:800; color:#fbbf24;" id="adWatchTimer">5</div>
+                <div style="font-size:10px; color:#cbd5e1; margin-top:4px;">Reklamın bitmesine kalan süre</div>
+            </div>
+            <div style="font-size:10px; color:#34d399; font-weight:700;">⚡ Reklam tamamlandığında +0.20 YürüPara kazanacaksınız!</div>
+        </div>
+    </div>
+
+    <!-- OYUN MODALI (3 oyun ortak modal, içeriği dinamik değişir) -->
+    <div id="gameModal" class="modal hidden">
+        <div class="modal-card" style="max-width:340px;">
+            <h3 id="gameTitle" style="font-size:15px; margin-bottom:6px;">🎯 Hedef Vur</h3>
+            <div style="display:flex; justify-content:space-between; font-size:11px; color:#cbd5e1; margin-bottom:8px;">
+                <span>⏱️ <span id="gameTimerText">00:00</span></span>
+                <span>⭐ Skor: <span id="gameScoreText">0</span></span>
+            </div>
+            <div id="gameArea" style="position:relative; width:100%; height:220px; background:rgba(255,255,255,0.05); border-radius:16px; overflow:hidden; margin-bottom:8px;"></div>
+            <div style="font-size:9px; color:#94a3b8; margin-bottom:10px;" id="gameTierText">1dk: 0.10 YP · 2dk: 0.20 YP · 3dk: 0.30 YP</div>
+            <button class="m-btn m-btn-primary" style="width:100%; font-size:12px;" id="gameStartBtn" onclick="startGame()">▶️ Başla</button>
+            <button class="m-btn m-btn-gold hidden" style="width:100%; font-size:12px;" id="gameEndBtn" onclick="endGame()">🏁 Bitir ve Ödülü Al</button>
+            <button class="m-btn m-btn-secondary" style="width:100%; margin-top:6px; font-size:11px;" onclick="closeGameModal()">Kapat</button>
+        </div>
+    </div>
+
+    <!-- Bu özellikten ÖNCE kayıt olmuş hesaplar için tek seferlik veri koruma onayı -->
+    <div id="privacyRetrofitModal" class="modal hidden">
+        <div class="modal-card">
+            <div style="font-size:36px; margin-bottom:10px;">🛡️</div>
+            <h3 style="font-size:16px; margin-bottom:10px;">Verileriniz Güvende</h3>
+            <p style="font-size:12px; color:#cbd5e1; line-height:1.5; margin-bottom:16px;">Ad, e-posta, boy/kilo ve adım verileriniz yalnızca hesabınızı yönetmek ve kişiselleştirilmiş hesaplamalar için kullanılır, üçüncü şahıslarla asla paylaşılmaz. Devam ederek Gizlilik Politikası'nı ve KVKK Aydınlatma Metni'ni kabul etmiş olursunuz.</p>
+            <button class="m-btn m-btn-primary" style="width:100%; font-size:12px;" onclick="acceptPrivacyRetrofit()">Kabul Ediyorum, Devam Et</button>
         </div>
     </div>
 
@@ -624,6 +722,26 @@
                 if (idx < gCount) g.classList.add('active');
                 else g.classList.remove('active');
             });
+
+            document.getElementById('adWatchCountText').textContent = `${u.adWatchesToday || 0} / 3 bugün`;
+            document.getElementById('gamesTodayText').textContent = `Bugün: ${u.gamesPlayedToday || 0} / 5 ödül hakkı kullanıldı`;
+
+            // Bu özellikten önce kayıt olmuş hesaplar için tek seferlik onay ekranı
+            if (u.privacyAccepted !== true) {
+                document.getElementById('privacyRetrofitModal').classList.remove('hidden');
+            }
+        }
+
+        function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+
+        async function acceptPrivacyRetrofit() {
+            try {
+                await fetch('/api/v2/user/accept-privacy', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+            } catch (e) {}
+            closeModal('privacyRetrofitModal');
         }
 
         async function convertSteps() {
@@ -835,8 +953,11 @@
             } else if (tab === 'store') {
                 document.querySelectorAll('.nav-item')[4].classList.add('active');
                 document.getElementById('tabStore').classList.remove('hidden');
-            } else if (tab === 'profile') {
+            } else if (tab === 'games') {
                 document.querySelectorAll('.nav-item')[5].classList.add('active');
+                document.getElementById('tabGames').classList.remove('hidden');
+            } else if (tab === 'profile') {
+                document.querySelectorAll('.nav-item')[6].classList.add('active');
                 document.getElementById('tabProfile').classList.remove('hidden');
             }
         }
@@ -1244,6 +1365,245 @@
                 }
                 stepPhase = 'low';
             }
+        }
+
+        // --- Davet Et ve Kazan ---
+        function openReferralModal() {
+            document.getElementById('referralModal').classList.remove('hidden');
+            fetchReferralInfo();
+        }
+
+        async function fetchReferralInfo() {
+            try {
+                const res = await fetch('/api/v2/referral/info', { headers: { 'Authorization': `Bearer ${token}` } });
+                const data = await res.json();
+                document.getElementById('referralCodeText').textContent = data.referralCode;
+                document.getElementById('referralWeekText').textContent = `${data.weekCount} / ${data.weekLimit}`;
+                document.getElementById('referralWeekFill').style.width = `${Math.min((data.weekCount / data.weekLimit) * 100, 100)}%`;
+                document.getElementById('referralTotalText').textContent = data.totalReferred;
+                document.getElementById('referralRewardedText').textContent = data.totalRewarded;
+                window.__referralLink = `${window.location.origin}/index.html?ref=${data.referralCode}`;
+            } catch (err) {}
+        }
+
+        document.getElementById('copyReferralLinkBtn').addEventListener('click', () => {
+            if (window.__referralLink) {
+                navigator.clipboard.writeText(window.__referralLink);
+                showAlert('Davet linki kopyalandı!');
+            }
+        });
+
+        // --- Reklam İzle Kazan (simüle - AdMob SDK'sı web sitesinde çalışmaz) ---
+        function openAdWatchModal() {
+            const modal = document.getElementById('adWatchModal');
+            const timerEl = document.getElementById('adWatchTimer');
+            modal.classList.remove('hidden');
+            let count = 5;
+            timerEl.textContent = count;
+            const timer = setInterval(() => {
+                count--;
+                timerEl.textContent = count;
+                if (count <= 0) {
+                    clearInterval(timer);
+                    modal.classList.add('hidden');
+                    claimAdWatchReward();
+                }
+            }, 1000);
+        }
+
+        async function claimAdWatchReward() {
+            try {
+                const res = await fetch('/api/v2/ads/watch', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
+                const data = await res.json();
+                showAlert(data.message || data.error);
+                fetchUserData();
+            } catch (err) {
+                showAlert('Reklam ödülü hatası.');
+            }
+        }
+
+        // --- Basit Oyunlar ---
+        let currentGame = null;
+        let gameStartTime = 0;
+        let gameScore = 0;
+        let gameTimerInterval = null;
+        let gameLogicTimer = null;
+
+        function openGame(type) {
+            currentGame = type;
+            gameScore = 0;
+            document.getElementById('gameScoreText').textContent = '0';
+            document.getElementById('gameTimerText').textContent = '00:00';
+            document.getElementById('gameTierText').textContent = `1 dk'ya (0.10 YP) 60sn kaldı`;
+            document.getElementById('gameStartBtn').classList.remove('hidden');
+            document.getElementById('gameEndBtn').classList.add('hidden');
+            const titles = { target: '🎯 Hedef Vur', reaction: '⚡ Reaksiyon Ustası', math: '🔢 Hızlı Toplama' };
+            const hints = {
+                target: 'Başla\'ya basınca hedef belirecek',
+                reaction: 'Başla\'ya basınca yeşil ışığı bekleyin',
+                math: 'Başla\'ya basınca sorular gelecek'
+            };
+            document.getElementById('gameTitle').textContent = titles[type];
+            const area = document.getElementById('gameArea');
+            area.innerHTML = `<div style="display:flex; align-items:center; justify-content:center; height:100%; font-size:11px; color:#94a3b8; text-align:center; padding:0 20px;">${hints[type]}</div>`;
+            document.getElementById('gameModal').classList.remove('hidden');
+        }
+
+        function closeGameModal() {
+            stopGameLogic();
+            document.getElementById('gameModal').classList.add('hidden');
+        }
+
+        function stopGameLogic() {
+            clearInterval(gameTimerInterval);
+            clearInterval(gameLogicTimer);
+            clearTimeout(gameLogicTimer);
+            gameLogicTimer = null;
+        }
+
+        function startGame() {
+            gameStartTime = Date.now();
+            gameScore = 0;
+            document.getElementById('gameScoreText').textContent = '0';
+            document.getElementById('gameStartBtn').classList.add('hidden');
+            document.getElementById('gameEndBtn').classList.remove('hidden');
+
+            clearInterval(gameTimerInterval);
+            gameTimerInterval = setInterval(updateGameTimerDisplay, 250);
+            updateGameTimerDisplay();
+
+            const area = document.getElementById('gameArea');
+            area.innerHTML = '';
+            if (currentGame === 'target') startTargetGame(area);
+            else if (currentGame === 'reaction') startReactionGame(area);
+            else if (currentGame === 'math') startMathGame(area);
+        }
+
+        function updateGameTimerDisplay() {
+            const elapsed = Date.now() - gameStartTime;
+            const totalSec = Math.floor(elapsed / 1000);
+            const mm = String(Math.floor(totalSec / 60)).padStart(2, '0');
+            const ss = String(totalSec % 60).padStart(2, '0');
+            document.getElementById('gameTimerText').textContent = `${mm}:${ss}`;
+
+            const tierEl = document.getElementById('gameTierText');
+            if (elapsed >= 180000) tierEl.textContent = '✅ 3 dk tamamlandı - maksimum 0.30 YP kazandınız!';
+            else if (elapsed >= 120000) tierEl.textContent = `✅ 0.20 YP kazandınız · 0.30 YP'ye ${Math.ceil((180000 - elapsed) / 1000)}sn kaldı`;
+            else if (elapsed >= 60000) tierEl.textContent = `✅ 0.10 YP kazandınız · 0.20 YP'ye ${Math.ceil((120000 - elapsed) / 1000)}sn kaldı`;
+            else tierEl.textContent = `0.10 YP'ye ${Math.ceil((60000 - elapsed) / 1000)}sn kaldı`;
+        }
+
+        async function endGame() {
+            const durationMs = Date.now() - gameStartTime;
+            stopGameLogic();
+            document.getElementById('gameStartBtn').classList.remove('hidden');
+            document.getElementById('gameEndBtn').classList.add('hidden');
+
+            try {
+                const res = await fetch('/api/v2/games/reward', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ durationMs })
+                });
+                const data = await res.json();
+                showAlert(data.message || data.error);
+                fetchUserData();
+            } catch (err) {
+                showAlert('Oyun ödülü hatası.');
+            }
+            document.getElementById('gameModal').classList.add('hidden');
+        }
+
+        // Oyun 1: Hedef Vur - hedef her tıklamada rastgele bir konuma zıplar
+        function startTargetGame(area) {
+            const target = document.createElement('button');
+            target.textContent = '🎯';
+            target.style.cssText = 'position:absolute; width:44px; height:44px; font-size:22px; border-radius:50%; border:none; background:linear-gradient(135deg,#a855f7,#ec4899); cursor:pointer;';
+            area.appendChild(target);
+
+            function moveTarget() {
+                const maxX = Math.max(area.clientWidth - 44, 0);
+                const maxY = Math.max(area.clientHeight - 44, 0);
+                target.style.left = `${Math.random() * maxX}px`;
+                target.style.top = `${Math.random() * maxY}px`;
+            }
+
+            target.addEventListener('click', () => {
+                gameScore++;
+                document.getElementById('gameScoreText').textContent = gameScore;
+                moveTarget();
+            });
+            moveTarget();
+        }
+
+        // Oyun 2: Reaksiyon Ustası - daire rastgele aralıklarla yeşile döner, sadece
+        // yeşilken tıklamak puan kazandırır
+        function startReactionGame(area) {
+            const circle = document.createElement('button');
+            circle.style.cssText = 'position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:90px; height:90px; border-radius:50%; border:none; background:#475569; transition:background 0.15s;';
+            area.appendChild(circle);
+            let isGreen = false;
+
+            function scheduleFlash() {
+                gameLogicTimer = setTimeout(() => {
+                    isGreen = true;
+                    circle.style.background = '#22c55e';
+                    gameLogicTimer = setTimeout(() => {
+                        if (isGreen) {
+                            isGreen = false;
+                            circle.style.background = '#475569';
+                            scheduleFlash();
+                        }
+                    }, 1000);
+                }, 800 + Math.random() * 1500);
+            }
+
+            circle.addEventListener('click', () => {
+                if (isGreen) {
+                    isGreen = false;
+                    gameScore++;
+                    document.getElementById('gameScoreText').textContent = gameScore;
+                    circle.style.background = '#475569';
+                    clearTimeout(gameLogicTimer);
+                    scheduleFlash();
+                }
+            });
+
+            scheduleFlash();
+        }
+
+        // Oyun 3: Hızlı Toplama - iki basamaklı toplama sorusu, 4 seçenekten doğrusunu seç
+        function startMathGame(area) {
+            function newQuestion() {
+                const a = Math.floor(Math.random() * 9) + 1;
+                const b = Math.floor(Math.random() * 9) + 1;
+                const correct = a + b;
+                const options = new Set([correct]);
+                while (options.size < 4) {
+                    const wrong = correct + Math.floor(Math.random() * 9) - 4;
+                    if (wrong !== correct && wrong >= 0) options.add(wrong);
+                }
+                const optArr = Array.from(options).sort(() => Math.random() - 0.5);
+
+                area.innerHTML = `
+                    <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; gap:12px;">
+                        <div style="font-size:26px; font-weight:800;">${a} + ${b} = ?</div>
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; width:80%;">
+                            ${optArr.map(o => `<button class="m-btn m-btn-secondary mathOpt" data-val="${o}" style="font-size:14px; padding:10px;">${o}</button>`).join('')}
+                        </div>
+                    </div>
+                `;
+                area.querySelectorAll('.mathOpt').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        if (parseInt(btn.dataset.val) === correct) {
+                            gameScore++;
+                            document.getElementById('gameScoreText').textContent = gameScore;
+                        }
+                        newQuestion();
+                    });
+                });
+            }
+            newQuestion();
         }
 
         // Init

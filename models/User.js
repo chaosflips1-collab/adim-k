@@ -37,7 +37,25 @@ const UserSchema = new mongoose.Schema({
         unlockedAt: { type: Date, default: Date.now }
     }],
     role: { type: String, default: 'user' },
-    createdAt: { type: Date, default: Date.now }
+    createdAt: { type: Date, default: Date.now },
+
+    // v2.7: Davet Et ve Kazan
+    referralCode: { type: String, unique: true, sparse: true },
+    referredBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    referralRewardGiven: { type: Boolean, default: false },
+    referralWeekStart: { type: String, default: '' },
+    referralWeekCount: { type: Number, default: 0 },
+
+    // v2.7: Reklam İzle Kazan (günlük sıfırlanır, bkz. ensureDailyReset)
+    adWatchesToday: { type: Number, default: 0 },
+
+    // v2.7: Basit Oyunlar (günlük sıfırlanır, bkz. ensureDailyReset)
+    gamesPlayedToday: { type: Number, default: 0 },
+    lastGameClaimAt: { type: Date, default: null },
+
+    // v2.7: Kayıt sonrası izin/veri koruma sözleşmesi onayı
+    privacyAccepted: { type: Boolean, default: false },
+    privacyAcceptedAt: { type: Date, default: null }
 });
 
 module.exports = mongoose.model('User', UserSchema);

@@ -112,9 +112,23 @@ function ensureDailyReset(user) {
         user.todayConvertedSteps = 0;
         user.waterGlasses = 0;
         user.completedQuests = [];
+        user.adWatchesToday = 0;
+        user.gamesPlayedToday = 0;
         user.lastStepDate = today;
     }
     return today;
+}
+
+// Haftanın Pazartesi'sini (UTC) YYYY-MM-DD olarak döndürür - davet ödülü
+// haftalık limitinin (10 kişi/hafta) sıfırlanma noktasını belirler.
+function getWeekStartStr() {
+    const now = new Date();
+    const day = now.getUTCDay(); // 0=Pazar..6=Cumartesi
+    const diffToMonday = (day === 0 ? -6 : 1) - day;
+    const monday = new Date(now);
+    monday.setUTCDate(now.getUTCDate() + diffToMonday);
+    monday.setUTCHours(0, 0, 0, 0);
+    return monday.toISOString().split('T')[0];
 }
 
 function calculateLevel(steps) {
@@ -130,7 +144,7 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 app.post('/api/v2/register', async (req, res) => {
     try {
-        const { name, email, password, height, weight } = req.body;
+        const { name, email, password, height, weight, refCode } = req.body;
         if (!name || !email || !password) return res.status(400).json({ error: "Tüm alanları doldurun." });
 
         const cleanName = String(name).trim();
@@ -159,6 +173,15 @@ app.post('/api/v2/register', async (req, res) => {
             lastStepDate: getTodayStr(),
             badges: [{ name: 'Aramıza Hoş Geldin!', icon: '👟' }]
         });
+
+        // MongoDB _id benzersiz olduğu için davet kodu için ayrıca çakışma
+        // kontrolü yapmaya gerek yok - _id'nin son 6 karakteri her zaman tektir.
+        newUser.referralCode = newUser._id.toString().slice(-6).toUpperCase();
+
+        if (refCode && typeof refCode === 'string') {
+            const referrer = await User.findOne({ referralCode: refCode.trim().toUpperCase() });
+            if (referrer) newUser.referredBy = referrer._id;
+        }
 
         await newUser.save();
         const token = jwt.sign({ id: newUser._id, email: newUser.email, name: newUser.name, role: newUser.role }, JWT_SECRET, { expiresIn: '7d' });
@@ -245,6 +268,8 @@ app.get('/auth/google/callback', async (req, res) => {
                 lastStepDate: getTodayStr(),
                 badges: [{ name: 'Google İle Bağlandı', icon: '🌐' }]
             });
+            user.referralCode = user._id.toString().slice(-6).toUpperCase();
+            await user.save();
         }
 
         const token = jwt.sign({ id: user._id, email: user.email, name: user.name, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
@@ -381,6 +406,28 @@ app.post('/api/v2/steps/convert', authMiddleware, async (req, res) => {
         user.multiplier = lvlData.multiplier;
 
         await user.save();
+
+        // Davet Et Kazan: davet edilen kişi İLK kez adım dönüştürdüğünde (sadece
+        // kayıt olmak yetmez - sahte hesaplarla anlık ödül toplamayı engeller)
+        // daveti getiren kişiye tek seferlik 10 YP verilir, haftada en fazla 10 kişi.
+        if (!user.referralRewardGiven && user.referredBy) {
+            const referrer = await User.findById(user.referredBy);
+            if (referrer) {
+                const weekStart = getWeekStartStr();
+                if (referrer.referralWeekStart !== weekStart) {
+                    referrer.referralWeekStart = weekStart;
+                    referrer.referralWeekCount = 0;
+                }
+                if (referrer.referralWeekCount < 10) {
+                    referrer.points = Math.round((referrer.points + 10) * 100) / 100;
+                    referrer.referralWeekCount += 1;
+                    await referrer.save();
+                }
+            }
+            user.referralRewardGiven = true;
+            await user.save();
+        }
+
         res.json({
             message: `🎉 ${convertAmount.toLocaleString('tr-TR')} adım dönüştürüldü! (+${(Math.round(earnedPoints * 100) / 100)} YürüPara)`,
             earnedPoints,
@@ -466,6 +513,128 @@ app.post('/api/v2/wheel/spin', authMiddleware, async (req, res) => {
         res.json({ message: `🎡 Çark döndü ve +${wonPoints} YürüPara kazandınız!`, wonPoints, user });
     } catch (err) {
         res.status(500).json({ error: "Çark hatası." });
+    }
+});
+
+// Davet Et Kazan: kullanıcının kendi kodu, bu haftaki ödül sayacı ve toplam
+// davet istatistikleri. Eski (bu özellikten önce oluşmuş) hesaplarda kod
+// yoksa burada ilk çağrıda üretilir.
+app.get('/api/v2/referral/info', authMiddleware, async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id).select('-password');
+        if (!user.referralCode) {
+            user.referralCode = user._id.toString().slice(-6).toUpperCase();
+        }
+        const weekStart = getWeekStartStr();
+        if (user.referralWeekStart !== weekStart) {
+            user.referralWeekStart = weekStart;
+            user.referralWeekCount = 0;
+        }
+        await user.save();
+
+        const totalReferred = await User.countDocuments({ referredBy: user._id });
+        const totalRewarded = await User.countDocuments({ referredBy: user._id, referralRewardGiven: true });
+
+        res.json({
+            referralCode: user.referralCode,
+            weekCount: user.referralWeekCount,
+            weekLimit: 10,
+            rewardPerReferral: 10,
+            totalReferred,
+            totalRewarded
+        });
+    } catch (err) {
+        res.status(500).json({ error: "Davet bilgisi alınamadı." });
+    }
+});
+
+// Reklam İzle Kazan: gerçek bir reklam ağı entegrasyonu değildir (bir web
+// sitesinde native AdMob SDK'sı çalışmaz) - istemci tarafında mevcut "2x
+// Bonus" özelliğindekiyle aynı simüle reklam akışı kullanılır, bu uç nokta
+// sadece o akış tamamlandıktan sonra ödülü günlük limit dahilinde verir.
+app.post('/api/v2/ads/watch', authMiddleware, async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id).select('-password');
+        ensureDailyReset(user);
+
+        const AD_REWARD = 0.20;
+        const MAX_ADS_PER_DAY = 3;
+        if ((user.adWatchesToday || 0) >= MAX_ADS_PER_DAY) {
+            return res.status(400).json({ error: `Bugünkü reklam izleme hakkınızı (${MAX_ADS_PER_DAY}) kullandınız. Yarın tekrar deneyin!` });
+        }
+
+        user.adWatchesToday = (user.adWatchesToday || 0) + 1;
+        user.points = Math.round((user.points + AD_REWARD) * 100) / 100;
+        await user.save();
+
+        res.json({
+            message: `📺 Reklam tamamlandı! +${AD_REWARD} YürüPara kazandınız. (${user.adWatchesToday}/${MAX_ADS_PER_DAY})`,
+            adWatchesToday: user.adWatchesToday,
+            maxAdsPerDay: MAX_ADS_PER_DAY,
+            user
+        });
+    } catch (err) {
+        res.status(500).json({ error: "Reklam ödülü hatası." });
+    }
+});
+
+// Basit Oyunlar: ödül, istemcinin bildirdiği oynama süresine göre kademeli
+// verilir (1/2/3 dakika -> 0.10/0.20/0.30 YP). Süre istemci tarafından
+// bildirildiği için mükemmel bir hile koruması değildir; günlük 5 talep
+// sınırı ve talepler arası minimum 20sn bekleme ile makul bir sınır konur.
+app.post('/api/v2/games/reward', authMiddleware, async (req, res) => {
+    try {
+        const durationMs = parseInt(req.body.durationMs);
+        if (!Number.isFinite(durationMs) || durationMs < 1000) {
+            return res.status(400).json({ error: "Geçersiz oyun süresi." });
+        }
+
+        const user = await User.findById(req.user.id).select('-password');
+        ensureDailyReset(user);
+
+        const MAX_GAME_CLAIMS_PER_DAY = 5;
+        if ((user.gamesPlayedToday || 0) >= MAX_GAME_CLAIMS_PER_DAY) {
+            return res.status(400).json({ error: `Bugünkü oyun ödülü hakkınızı (${MAX_GAME_CLAIMS_PER_DAY}) kullandınız!` });
+        }
+        if (user.lastGameClaimAt && (Date.now() - new Date(user.lastGameClaimAt).getTime()) < 20000) {
+            return res.status(400).json({ error: "Çok hızlı art arda oyun ödülü talep edildi, birkaç saniye bekleyin." });
+        }
+
+        let reward = 0;
+        if (durationMs >= 180000) reward = 0.30;
+        else if (durationMs >= 120000) reward = 0.20;
+        else if (durationMs >= 60000) reward = 0.10;
+        else {
+            return res.status(400).json({ error: "Ödül kazanmak için en az 1 dakika oynamalısınız." });
+        }
+
+        user.gamesPlayedToday = (user.gamesPlayedToday || 0) + 1;
+        user.lastGameClaimAt = new Date();
+        user.points = Math.round((user.points + reward) * 100) / 100;
+        await user.save();
+
+        res.json({
+            message: `🎮 Oyun tamamlandı! +${reward} YürüPara kazandınız. (${user.gamesPlayedToday}/${MAX_GAME_CLAIMS_PER_DAY})`,
+            reward,
+            gamesPlayedToday: user.gamesPlayedToday,
+            maxGameClaimsPerDay: MAX_GAME_CLAIMS_PER_DAY,
+            user
+        });
+    } catch (err) {
+        res.status(500).json({ error: "Oyun ödülü hatası." });
+    }
+});
+
+// Kayıt sonrası veri koruma/gizlilik sözleşmesi onayı
+app.post('/api/v2/user/accept-privacy', authMiddleware, async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id).select('-password');
+        user.privacyAccepted = true;
+        user.privacyAcceptedAt = new Date();
+        await user.save();
+        res.json({ message: "Onayınız kaydedildi.", user });
+    } catch (err) {
+        res.status(500).json({ error: "Onay kaydedilemedi." });
     }
 });
 
