@@ -946,8 +946,23 @@
         async function requestWakeLock() {
             try {
                 if ('wakeLock' in navigator) {
-                    wakeLock = await navigator.wakeLock.request('screen');
-                    wakeLock.addEventListener('release', () => { wakeLock = null; });
+                    const lock = await navigator.wakeLock.request('screen');
+                    // İstek async - kullanıcı bu bekleme sırasında sensörü hızlıca
+                    // durdurmuş olabilir. Bu durumu kontrol etmezsek kilit hiç
+                    // atanmadan/serbest bırakılmadan sonsuza kadar askıda kalır ve
+                    // ekran bir daha asla otomatik kilitlenmez.
+                    if (!isSensorActive) {
+                        lock.release().catch(() => {});
+                        return;
+                    }
+                    wakeLock = lock;
+                    // Bu dinleyici SADECE "lock" hâlâ güncel kilitse sıfırlamalı - aksi
+                    // halde eski bir kilidin (tarayıcı tarafından otomatik veya bizim
+                    // release() çağrımızla tetiklenen) 'release' olayı, o sırada zaten
+                    // atanmış YENİ bir kilidin referansını da silip kaybettirebilir.
+                    lock.addEventListener('release', () => {
+                        if (wakeLock === lock) wakeLock = null;
+                    });
                 }
             } catch (err) {
                 wakeLock = null; // desteklenmiyor / izin yok - sessizce devam et
@@ -955,10 +970,14 @@
         }
 
         async function releaseWakeLock() {
+            const current = wakeLock;
+            if (!current) return;
             try {
-                if (wakeLock) await wakeLock.release();
+                await current.release();
             } catch (err) {}
-            wakeLock = null;
+            // Bu bekleme sırasında yeni bir kilit atanmış olabilir (hızlı durdur->başlat) -
+            // öyleyse onu kaybetmemek için sadece hâlâ bizim serbest bıraktığımız kilitse sıfırla.
+            if (wakeLock === current) wakeLock = null;
         }
 
         // --- Toplu (Batch) Senkronizasyon: her adımda ayrı network isteği ATMIYORUZ ---
@@ -1192,22 +1211,35 @@
                 const timeDiff = lastCycleTime === 0 ? MIN_STEP_INTERVAL_MS : now - lastCycleTime;
                 const isValidCadence = timeDiff >= MIN_STEP_INTERVAL_MS && timeDiff <= MAX_STEP_INTERVAL_MS;
 
-                if (amplitude >= threshold && isValidCadence) {
-                    lastCycleTime = now;
-                    consecutiveValidCycles++;
-                    // Tek seferlik rastgele bir sarsıntının adım sanılmaması için en az
-                    // 2 ardışık geçerli-kadanslı döngü şart koşuyoruz - ama eski
-                    // sürümün 6 döngü/%12 varyasyon şartı kadar katı değil; gerçek
-                    // yürüyüşün doğal düzensizliğinde bile çalışır.
-                    if (consecutiveValidCycles >= CONSECUTIVE_CYCLES_REQUIRED) {
-                        registerStep(amplitude);
+                if (amplitude >= threshold) {
+                    if (isValidCadence) {
+                        consecutiveValidCycles++;
+                        // Tek seferlik rastgele bir sarsıntının adım sanılmaması için en az
+                        // 2 ardışık geçerli-kadanslı döngü şart koşuyoruz - ama eski
+                        // sürümün 6 döngü/%12 varyasyon şartı kadar katı değil; gerçek
+                        // yürüyüşün doğal düzensizliğinde bile çalışır.
+                        if (consecutiveValidCycles >= CONSECUTIVE_CYCLES_REQUIRED) {
+                            registerStep(amplitude);
+                        }
+                    } else {
+                        consecutiveValidCycles = 0;
                     }
+                    // ÖNEMLİ: yeterli genlikli HER döngüde zaman referansını güncelliyoruz -
+                    // kadans şartını sağlamasa (ör. çok hızlı) bile. Aksi halde eski referans
+                    // donuk kalır ve aradan geçen gerçek süre birikerek belirli periyotlarla
+                    // MIN_STEP_INTERVAL_MS'i "yanlışlıkla" aşar (aliasing) - bu da telefonu
+                    // gerçek yürüyüşten çok daha hızlı sallayarak sahte adım/ödül üretmeyi
+                    // mümkün kılan bir hile açığıydı. Zaman referansı her döngüde tazelenince
+                    // art arda çok hızlı döngüler kalıcı olarak reddedilir.
+                    lastCycleTime = now;
                 } else if (timeDiff > IDLE_RESET_MS) {
                     // Uzun süredir hiç geçerli döngü yok: durdu/oturdu, ritmi sıfırla
                     consecutiveValidCycles = 0;
                     lastCycleTime = 0;
                 } else {
-                    // Kadans/genlik şartını sağlamayan bir döngü ritmi bozar
+                    // Genliği yetersiz (gürültü seviyesinde) bir döngü - zaman referansına
+                    // dokunmuyoruz ki cepte gevşek duran telefonun ufak titreşimleri, hemen
+                    // ardından gelen GERÇEK bir adımı "çok hızlı" diye yanlışlıkla reddetmesin.
                     consecutiveValidCycles = 0;
                 }
                 stepPhase = 'low';
