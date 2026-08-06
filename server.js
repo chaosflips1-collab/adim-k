@@ -619,6 +619,20 @@ app.post('/api/v2/admin/rewards/add', authMiddleware, adminMiddleware, async (re
     }
 });
 
+app.put('/api/v2/admin/rewards/:id/price', authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+        const pointsCost = parseFloat(req.body.pointsCost);
+        if (!Number.isFinite(pointsCost) || pointsCost <= 0) {
+            return res.status(400).json({ error: "Geçersiz fiyat." });
+        }
+        const reward = await Reward.findByIdAndUpdate(req.params.id, { pointsCost }, { new: true });
+        if (!reward) return res.status(404).json({ error: "Ürün bulunamadı." });
+        res.json({ message: `"${reward.title}" fiyatı ${pointsCost} YP olarak güncellendi.`, reward });
+    } catch (err) {
+        res.status(500).json({ error: "Fiyat güncelleme hatası." });
+    }
+});
+
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
     console.log(`🚀 AdımKasası PRO (v2.6) Sunucusu http://localhost:${PORT} adresinde aktif!`);
