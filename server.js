@@ -842,9 +842,14 @@ app.put('/api/v2/admin/charities/:id/price', authMiddleware, adminMiddleware, as
         if (!Number.isFinite(pointsCost) || pointsCost <= 0) {
             return res.status(400).json({ error: "Geçersiz değer." });
         }
-        const charity = await Charity.findByIdAndUpdate(req.params.id, { pointsCost }, { new: true });
+        const update = { pointsCost };
+        // Açıklama isteğe bağlı - gönderilmezse mevcut açıklama korunur.
+        if (typeof req.body.description === 'string' && req.body.description.trim()) {
+            update.description = req.body.description.trim();
+        }
+        const charity = await Charity.findByIdAndUpdate(req.params.id, update, { new: true });
         if (!charity) return res.status(404).json({ error: "Bağış kurumu bulunamadı." });
-        res.json({ message: `"${charity.title}" değeri ${pointsCost} YP olarak güncellendi.`, charity });
+        res.json({ message: `"${charity.title}" güncellendi.`, charity });
     } catch (err) {
         res.status(500).json({ error: "Değer güncelleme hatası." });
     }

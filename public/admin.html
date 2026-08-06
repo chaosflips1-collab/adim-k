@@ -235,23 +235,28 @@
                 data.charities.forEach(c => {
                     const title = escapeHtml(c.title);
                     const icon = escapeHtml(c.icon || '❤️');
+                    const desc = escapeHtml(c.description || '');
                     const row = document.createElement('div');
-                    row.style.cssText = 'display:flex; align-items:center; gap:8px; background:rgba(255,255,255,0.04); border-radius:12px; padding:8px 10px;';
+                    row.style.cssText = 'display:flex; flex-direction:column; gap:6px; background:rgba(255,255,255,0.04); border-radius:12px; padding:10px;';
                     row.innerHTML = `
-                        <span style="flex:1; min-width:0; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${icon} ${title}</span>
-                        <input type="number" step="0.01" min="0.01" value="${c.pointsCost}" style="width:100px; margin:0; padding:8px;" class="charPriceInput">
-                        <button class="btn btn-primary" style="padding:8px 12px; font-size:11px; flex-shrink:0;">Kaydet</button>
+                        <span style="font-size:13px; font-weight:700;">${icon} ${title}</span>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <input type="text" value="${desc}" style="flex:1; min-width:0; margin:0; padding:8px; font-size:12px;" class="charDescInput" placeholder="Açıklama (örn: 100.00 YP = 1 Kg Mama)">
+                            <input type="number" step="0.01" min="0.01" value="${c.pointsCost}" style="width:90px; flex-shrink:0; margin:0; padding:8px;" class="charPriceInput">
+                            <button class="btn btn-primary" style="padding:8px 12px; font-size:11px; flex-shrink:0;">Kaydet</button>
+                        </div>
                     `;
-                    const input = row.querySelector('.charPriceInput');
+                    const priceInput = row.querySelector('.charPriceInput');
+                    const descInput = row.querySelector('.charDescInput');
                     const saveBtn = row.querySelector('button');
-                    saveBtn.addEventListener('click', () => updateCharityPrice(c._id, input, title));
+                    saveBtn.addEventListener('click', () => updateCharityPrice(c._id, priceInput, descInput, title));
                     list.appendChild(row);
                 });
             } catch (err) {}
         }
 
-        async function updateCharityPrice(charityId, inputEl, title) {
-            const newValue = parseFloat(inputEl.value);
+        async function updateCharityPrice(charityId, priceInputEl, descInputEl, title) {
+            const newValue = parseFloat(priceInputEl.value);
             if (!Number.isFinite(newValue) || newValue <= 0) {
                 showAlert('Geçersiz değer.');
                 return;
@@ -261,7 +266,7 @@
                 const res = await fetch(`/api/v2/admin/charities/${charityId}/price`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                    body: JSON.stringify({ pointsCost: newValue })
+                    body: JSON.stringify({ pointsCost: newValue, description: descInputEl.value })
                 });
                 const data = await res.json();
                 showAlert(data.message || data.error || `"${title}" değeri güncellendi.`);
