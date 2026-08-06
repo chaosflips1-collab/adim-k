@@ -418,33 +418,7 @@
                     Tüm sosyal bağışlar AdımKasası'nın aylık sponsorluk ve reklam gelirleri havuzundan karşılanarak sivil toplum kuruluşlarına resmi olarak aktarılır.
                 </div>
                 
-                <div class="m-list-card">
-                    <div style="font-size:24px;">🐶</div>
-                    <strong style="font-size:14px; display:block;">HAAP Barınak Mama Bağışı</strong>
-                    <p style="font-size:11px; color:#94a3b8; margin:2px 0 8px 0;">1.00 YP = 1 Kg Mama</p>
-                    <button class="m-btn m-btn-primary" style="width:100%; font-size:11px;" onclick="donateCharity('HAAP Barınak Mama Bağışı', 1.00)">1.00 YP Bağışla</button>
-                </div>
-
-                <div class="m-list-card">
-                    <div style="font-size:24px;">🌲</div>
-                    <strong style="font-size:14px; display:block;">TEMA Geleceğe Nefes Fidanı</strong>
-                    <p style="font-size:11px; color:#94a3b8; margin:2px 0 8px 0;">2.00 YP = 1 Adet Fidan</p>
-                    <button class="m-btn m-btn-primary" style="width:100%; font-size:11px;" onclick="donateCharity('TEMA Fidan Bağışı', 2.00)">2.00 YP Bağışla</button>
-                </div>
-
-                <div class="m-list-card">
-                    <div style="font-size:24px;">❤️</div>
-                    <strong style="font-size:14px; display:block;">LÖSEV Çocuk Sağlık Paketi</strong>
-                    <p style="font-size:11px; color:#94a3b8; margin:2px 0 8px 0;">3.00 YP = Sağlık Desteği</p>
-                    <button class="m-btn m-btn-primary" style="width:100%; font-size:11px;" onclick="donateCharity('LÖSEV Çocuk Sağlık Paketi', 3.00)">3.00 YP Bağışla</button>
-                </div>
-
-                <div class="m-list-card">
-                    <div style="font-size:24px;">📚</div>
-                    <strong style="font-size:14px; display:block;">Köy Okulları Kitap Seti</strong>
-                    <p style="font-size:11px; color:#94a3b8; margin:2px 0 8px 0;">2.50 YP = Eğitime Destek</p>
-                    <button class="m-btn m-btn-primary" style="width:100%; font-size:11px;" onclick="donateCharity('Köy Okulları Kitap Seti', 2.50)">2.50 YP Bağışla</button>
-                </div>
+                <div id="charityContainer"></div>
             </div>
 
             <!-- TAB 5: %100 DİJİTAL MAĞAZA -->
@@ -912,6 +886,30 @@
                             <div style="text-align:right; flex-shrink:0; padding-left:8px;"><span style="color:#c084fc; font-weight:800; font-size:12px;">${u.steps.toLocaleString('tr-TR')} Adım</span></div>
                         </div>
                     `;
+                });
+            } catch (err) {}
+        }
+
+        async function fetchCharities() {
+            try {
+                const res = await fetch('/api/v2/charities');
+                const data = await res.json();
+                const container = document.getElementById('charityContainer');
+                container.innerHTML = '';
+                data.charities.forEach(c => {
+                    const title = escapeHtml(c.title);
+                    const desc = escapeHtml(c.description);
+                    const icon = escapeHtml(c.icon || '❤️');
+                    const card = document.createElement('div');
+                    card.className = 'm-list-card';
+                    card.innerHTML = `
+                        <div style="font-size:24px;">${icon}</div>
+                        <strong style="font-size:14px; display:block; overflow-wrap:break-word;">${title}</strong>
+                        <p style="font-size:11px; color:#94a3b8; margin:2px 0 8px 0;">${desc}</p>
+                        <button class="m-btn m-btn-primary" style="width:100%; font-size:11px;">${c.pointsCost.toFixed(2)} YP Bağışla</button>
+                    `;
+                    card.querySelector('button').addEventListener('click', () => donateCharity(c.title, c.pointsCost));
+                    container.appendChild(card);
                 });
             } catch (err) {}
         }
@@ -1680,6 +1678,7 @@
         fetchUserData();
         fetchLeaderboard();
         fetchRewards();
+        fetchCharities();
     </script>
 </body>
 </html>

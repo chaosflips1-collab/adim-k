@@ -103,6 +103,28 @@
                 <div id="rewardPriceList" style="display:flex; flex-direction:column; gap:8px;"></div>
             </div>
 
+            <!-- YENİ BAĞIŞ KURUMU EKLEME -->
+            <div class="card">
+                <div class="card-title">🐾 Yeni Bağış Kurumu Ekle</div>
+                <form id="addCharityForm">
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                        <input type="text" id="charTitle" placeholder="Kurum Adı (örn: TEMA Fidan Bağışı)" required>
+                        <input type="number" step="0.01" id="charCost" placeholder="YürüPara Değeri (YP)" required>
+                    </div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                        <input type="text" id="charDesc" placeholder="Açıklama (örn: 2.00 YP = 1 Adet Fidan)" required>
+                        <input type="text" id="charIcon" placeholder="İkon Emoji (örn: 🌲)" value="❤️" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="width:100%; margin-top:6px;">❤️ Bağış Kurumu Ekle</button>
+                </form>
+            </div>
+
+            <!-- MEVCUT BAĞIŞ DEĞERLERİNİ DÜZENLE -->
+            <div class="card">
+                <div class="card-title">💝 Mevcut Bağış Değerlerini Düzenle</div>
+                <div id="charityPriceList" style="display:flex; flex-direction:column; gap:8px;"></div>
+            </div>
+
             <!-- KULLANICI LİSTESİ -->
             <div class="card">
                 <div class="card-title">👥 Son Kaydolan Kullanıcılar</div>
@@ -200,7 +222,52 @@
 
                 fetchAdminUsers(token);
                 fetchRewardPriceList();
+                fetchCharityPriceList();
             } catch (err) {}
+        }
+
+        async function fetchCharityPriceList() {
+            try {
+                const res = await fetch('/api/v2/charities');
+                const data = await res.json();
+                const list = document.getElementById('charityPriceList');
+                list.innerHTML = '';
+                data.charities.forEach(c => {
+                    const title = escapeHtml(c.title);
+                    const icon = escapeHtml(c.icon || '❤️');
+                    const row = document.createElement('div');
+                    row.style.cssText = 'display:flex; align-items:center; gap:8px; background:rgba(255,255,255,0.04); border-radius:12px; padding:8px 10px;';
+                    row.innerHTML = `
+                        <span style="flex:1; min-width:0; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${icon} ${title}</span>
+                        <input type="number" step="0.01" min="0.01" value="${c.pointsCost}" style="width:100px; margin:0; padding:8px;" class="charPriceInput">
+                        <button class="btn btn-primary" style="padding:8px 12px; font-size:11px; flex-shrink:0;">Kaydet</button>
+                    `;
+                    const input = row.querySelector('.charPriceInput');
+                    const saveBtn = row.querySelector('button');
+                    saveBtn.addEventListener('click', () => updateCharityPrice(c._id, input, title));
+                    list.appendChild(row);
+                });
+            } catch (err) {}
+        }
+
+        async function updateCharityPrice(charityId, inputEl, title) {
+            const newValue = parseFloat(inputEl.value);
+            if (!Number.isFinite(newValue) || newValue <= 0) {
+                showAlert('Geçersiz değer.');
+                return;
+            }
+            const token = localStorage.getItem('token_v2');
+            try {
+                const res = await fetch(`/api/v2/admin/charities/${charityId}/price`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ pointsCost: newValue })
+                });
+                const data = await res.json();
+                showAlert(data.message || data.error || `"${title}" değeri güncellendi.`);
+            } catch (err) {
+                showAlert('Değer güncelleme hatası.');
+            }
         }
 
         async function fetchRewardPriceList() {
@@ -292,6 +359,30 @@
                 showAlert(data.message || data.error);
                 document.getElementById('addRewardForm').reset();
                 fetchRewardPriceList();
+            } catch (err) { showAlert('Hata oluştu.'); }
+        });
+
+        document.getElementById('addCharityForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const token = localStorage.getItem('token_v2');
+            const body = {
+                title: document.getElementById('charTitle').value,
+                pointsCost: document.getElementById('charCost').value,
+                description: document.getElementById('charDesc').value,
+                icon: document.getElementById('charIcon').value
+            };
+
+            try {
+                const res = await fetch('/api/v2/admin/charities/add', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify(body)
+                });
+                const data = await res.json();
+                showAlert(data.message || data.error);
+                document.getElementById('addCharityForm').reset();
+                document.getElementById('charIcon').value = '❤️';
+                fetchCharityPriceList();
             } catch (err) { showAlert('Hata oluştu.'); }
         });
 

@@ -11,6 +11,7 @@ const User = require('./models/User');
 const Reward = require('./models/Reward');
 const Claim = require('./models/Claim');
 const Donation = require('./models/Donation');
+const Charity = require('./models/Charity');
 const authMiddleware = require('./middleware/auth');
 const { JWT_SECRET } = authMiddleware;
 
@@ -67,6 +68,16 @@ async function seedDemoData() {
                 { title: 'Steam 100 TL Dijital E-Pin Kodu', description: 'Steam cüzdanınıza bakiye ekleyen E-Pin kodu.', pointsCost: 25, category: 'Dijital Oyun Kodu', code: 'STEAM-100-DIGI', icon: '🎮', stock: 60 },
                 { title: 'Google Play 100 TL Dijital Kodu', description: 'Play Store hesabınıza bakiye ekleyen dijital kod.', pointsCost: 25, category: 'Dijital Market Kodu', code: 'GPLAY-100-DIGI', icon: '📱', stock: 50 },
                 { title: 'Trendyol 200 TL Dijital Hediye Kodu', description: 'Trendyol cüzdanım alanında anında aktif olan kod.', pointsCost: 45, category: 'Dijital Alışveriş', code: 'TRND-200-DIGI', icon: '🛍️', stock: 30 }
+            ]);
+        }
+
+        const charityCount = await Charity.countDocuments();
+        if (charityCount === 0) {
+            await Charity.insertMany([
+                { title: 'HAAP Barınak Mama Bağışı', description: '1.00 YP = 1 Kg Mama', pointsCost: 1.00, icon: '🐶' },
+                { title: 'TEMA Geleceğe Nefes Fidanı', description: '2.00 YP = 1 Adet Fidan', pointsCost: 2.00, icon: '🌲' },
+                { title: 'LÖSEV Çocuk Sağlık Paketi', description: '3.00 YP = Sağlık Desteği', pointsCost: 3.00, icon: '❤️' },
+                { title: 'Köy Okulları Kitap Seti', description: '2.50 YP = Eğitime Destek', pointsCost: 2.50, icon: '📚' }
             ]);
         }
 
@@ -693,6 +704,13 @@ app.get('/api/v2/rewards', async (req, res) => {
     } catch (err) { res.status(500).json({ error: "Ödüller alınamadı." }); }
 });
 
+app.get('/api/v2/charities', async (req, res) => {
+    try {
+        const charities = await Charity.find().sort({ pointsCost: 1 });
+        res.json({ charities });
+    } catch (err) { res.status(500).json({ error: "Bağış kurumları alınamadı." }); }
+});
+
 app.post('/api/v2/rewards/claim', authMiddleware, async (req, res) => {
     try {
         const { rewardId } = req.body;
@@ -800,6 +818,35 @@ app.put('/api/v2/admin/rewards/:id/price', authMiddleware, adminMiddleware, asyn
         res.json({ message: `"${reward.title}" fiyatı ${pointsCost} YP olarak güncellendi.`, reward });
     } catch (err) {
         res.status(500).json({ error: "Fiyat güncelleme hatası." });
+    }
+});
+
+app.post('/api/v2/admin/charities/add', authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+        const { title, description, pointsCost, icon } = req.body;
+        if (!title || !description) return res.status(400).json({ error: "Başlık ve açıklama zorunludur." });
+        const cost = parseFloat(pointsCost);
+        if (!Number.isFinite(cost) || cost <= 0) return res.status(400).json({ error: "Geçersiz değer." });
+
+        const newCharity = new Charity({ title, description, pointsCost: cost, icon: icon || '❤️' });
+        await newCharity.save();
+        res.json({ message: `❤️ "${title}" bağış kurumu eklendi!`, charity: newCharity });
+    } catch (err) {
+        res.status(500).json({ error: "Bağış kurumu ekleme hatası." });
+    }
+});
+
+app.put('/api/v2/admin/charities/:id/price', authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+        const pointsCost = parseFloat(req.body.pointsCost);
+        if (!Number.isFinite(pointsCost) || pointsCost <= 0) {
+            return res.status(400).json({ error: "Geçersiz değer." });
+        }
+        const charity = await Charity.findByIdAndUpdate(req.params.id, { pointsCost }, { new: true });
+        if (!charity) return res.status(404).json({ error: "Bağış kurumu bulunamadı." });
+        res.json({ message: `"${charity.title}" değeri ${pointsCost} YP olarak güncellendi.`, charity });
+    } catch (err) {
+        res.status(500).json({ error: "Değer güncelleme hatası." });
     }
 });
 
