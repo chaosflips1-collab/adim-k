@@ -385,7 +385,8 @@ app.post('/api/v2/steps/convert', authMiddleware, async (req, res) => {
 
         const DAILY_MAX_CAP = 15000;
         if (user.todayConvertedSteps >= DAILY_MAX_CAP) {
-            return res.status(400).json({ error: "Günlük maksimum 15.000 adım dönüştürme limitine ulaştınız!" });
+            // capReached: istemci bu bayrağı görünce Premium paywall ekranını açar.
+            return res.status(400).json({ error: "Günlük maksimum 15.000 adım dönüştürme limitine ulaştınız!", capReached: true });
         }
 
         const availableToConvert = Math.min(user.unconvertedSteps, DAILY_MAX_CAP - user.todayConvertedSteps);

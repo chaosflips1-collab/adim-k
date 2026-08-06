@@ -613,6 +613,44 @@
         </div>
     </div>
 
+    <!-- PREMIUM ABONELİK PAYWALL (günlük 15.000 adım limitine ulaşınca açılır) -->
+    <div id="premiumModal" class="modal hidden">
+        <div class="modal-card" style="max-width:360px;">
+            <div style="font-size:36px; margin-bottom:8px;">⭐</div>
+            <h3 style="font-size:18px; font-weight:800; margin-bottom:6px;">Premium'a Geç!</h3>
+            <p style="font-size:12px; color:#94a3b8; margin-bottom:16px;">Günlük 15.000 adım limitine ulaştın! Premium ile sınırsız dönüştür, 2x YürüPara kazan ve reklamsız deneyim yaşa.</p>
+
+            <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:14px;">
+                <button type="button" class="premium-plan-btn" data-plan="monthly" style="text-align:left; padding:14px; border-radius:16px; border:2px solid rgba(255,255,255,0.15); background:rgba(255,255,255,0.05); cursor:pointer; color:#fff;">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <strong style="font-size:14px;">Aylık</strong>
+                        <strong style="font-size:16px; color:#c084fc;">15 TL<span style="font-size:10px; color:#94a3b8; font-weight:400;">/ay</span></strong>
+                    </div>
+                </button>
+                <button type="button" class="premium-plan-btn" data-plan="yearly" style="text-align:left; padding:14px; border-radius:16px; border:2px solid #c084fc; background:rgba(168,85,247,0.15); cursor:pointer; color:#fff; position:relative;">
+                    <span style="position:absolute; top:-10px; right:12px; background:linear-gradient(135deg,#f59e0b,#ef4444); font-size:9px; font-weight:800; padding:3px 8px; border-radius:8px; color:#fff;">4 AY ÜCRETSİZ</span>
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <strong style="font-size:14px;">Yıllık</strong>
+                        <div style="text-align:right;">
+                            <div style="font-size:16px; color:#c084fc; font-weight:800;">120 TL<span style="font-size:10px; color:#94a3b8; font-weight:400;">/yıl</span></div>
+                            <div style="font-size:9px; color:#94a3b8;"><s>180 TL</s> · ayda ~10 TL</div>
+                        </div>
+                    </div>
+                </button>
+            </div>
+
+            <div style="text-align:left; font-size:11px; color:#cbd5e1; margin-bottom:16px; line-height:1.8;">
+                <div>✅ Günlük dönüştürme limiti YOK</div>
+                <div>✅ 2x YürüPara çarpanı her zaman aktif</div>
+                <div>✅ Reklamsız deneyim</div>
+                <div>✅ Öncelikli destek</div>
+            </div>
+
+            <button class="m-btn m-btn-primary" style="width:100%; font-size:13px;" onclick="subscribeToPremium()">⭐ Abone Ol</button>
+            <button class="m-btn m-btn-secondary" style="width:100%; margin-top:8px; font-size:11px;" onclick="closeModal('premiumModal')">Şimdi Değil</button>
+        </div>
+    </div>
+
     <!-- Bu özellikten ÖNCE kayıt olmuş hesaplar için tek seferlik veri koruma onayı -->
     <div id="privacyRetrofitModal" class="modal hidden">
         <div class="modal-card">
@@ -778,9 +816,41 @@
                 });
                 const data = await res.json();
                 showAlert(data.message || data.error);
+                // Günlük 15.000 adım limitine ulaşıldıysa Premium paywall'ı göster
+                // (Sweatcoin'deki gibi - önce hata mesajı görünsün, kısa bir an sonra teklif çıksın).
+                if (!res.ok && data.capReached) {
+                    setTimeout(openPremiumModal, 700);
+                }
                 fetchUserData();
                 fetchLeaderboard();
             } catch (err) {}
+        }
+
+        // --- Premium Abonelik Paywall ---
+        // NOT: Bu şu an sadece görsel bir ekran - gerçek bir ödeme sağlayıcısı
+        // (Stripe/iyzico vb.) bağlanana kadar "Abone Ol" gerçek para tahsil etmez.
+        // Sahte/çalışmayan bir ödeme akışı sunmak yerine bunu açıkça belirtiyoruz.
+        let selectedPremiumPlan = 'yearly';
+
+        document.querySelectorAll('.premium-plan-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.premium-plan-btn').forEach(b => {
+                    b.style.border = '2px solid rgba(255,255,255,0.15)';
+                    b.style.background = 'rgba(255,255,255,0.05)';
+                });
+                btn.style.border = '2px solid #c084fc';
+                btn.style.background = 'rgba(168,85,247,0.15)';
+                selectedPremiumPlan = btn.dataset.plan;
+            });
+        });
+
+        function openPremiumModal() {
+            document.getElementById('premiumModal').classList.remove('hidden');
+        }
+
+        function subscribeToPremium() {
+            showAlert('💡 Ödeme sistemi çok yakında aktif olacak! Şimdilik günlük limitin dolduğunda tekrar deneyebilirsin.');
+            closeModal('premiumModal');
         }
 
         async function addWater(count) {
