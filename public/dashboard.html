@@ -317,6 +317,7 @@
                     </div>
 
                     <button class="m-btn m-btn-blue" style="width:100%; margin-top:6px; font-size:12px;" id="sensorBtn" onclick="toggleStepSensor()">📱 CANLI SENSÖRÜ BAŞLAT (Yürürken Say)</button>
+                    <div id="sensorHint" style="font-size:9px; color:#94a3b8; margin-top:5px; display:none; line-height:1.4;">⚠️ Ekranı kilitleme ve uygulamadan çıkma sırasında sayım durur - telefon açık ve ekranda kalırsa kesintisiz sayar.</div>
 
                     <button class="m-btn m-btn-primary" style="width:100%; margin-top:8px; font-size:14px;" onclick="convertSteps()">⚡ YÜRÜPARA'YA ÇEVİR</button>
                 </div>
@@ -933,6 +934,33 @@
         let stepPhase = 'low';   // 'low' | 'high' — histerezis durum makinesi
         let phaseExtreme = 0;
 
+        // --- Ekran Uyanık Kalma Kilidi (Screen Wake Lock) ---
+        // Web sayfaları ekran kilitlendiğinde veya sekme arka plana alındığında
+        // JavaScript'i tamamen durdurur (iOS ve Android'in işletim sistemi seviyesi
+        // pil tasarrufu kısıtlaması - kodla aşılamaz). Bunu tam çözemesek de, Wake
+        // Lock API sensör aktifken ekranın KENDİLİĞİNDEN otomatik kilitlenmesini
+        // engelleyerek kullanıcı elle kilitlemediği sürece sayımın kesintisiz
+        // sürmesini sağlar. Tarayıcı desteklemiyorsa (veya izin yoksa) sessizce yok sayılır.
+        let wakeLock = null;
+
+        async function requestWakeLock() {
+            try {
+                if ('wakeLock' in navigator) {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                    wakeLock.addEventListener('release', () => { wakeLock = null; });
+                }
+            } catch (err) {
+                wakeLock = null; // desteklenmiyor / izin yok - sessizce devam et
+            }
+        }
+
+        async function releaseWakeLock() {
+            try {
+                if (wakeLock) await wakeLock.release();
+            } catch (err) {}
+            wakeLock = null;
+        }
+
         // --- Toplu (Batch) Senkronizasyon: her adımda ayrı network isteği ATMIYORUZ ---
         // Eskiden her adımda fetch() atılıyordu: yavaş/kopuk bağlantıda adımlar sessizce
         // kayboluyor ve yürürken saniyede bir toast bildirimi ekranı kaplıyordu.
@@ -1063,9 +1091,13 @@
             clearInterval(syncIntervalId);
             syncIntervalId = setInterval(flushPendingSteps, 5000); // her 5sn'de bir toplu senkron
 
+            requestWakeLock(); // ekran otomatik kilitlenmesin - sensör aktif olduğu sürece
+
             document.getElementById('sensorBtn').textContent = '🟢 TEPE ALGILAMA SENSÖRÜ AKTİF (Yürüyün)';
             document.getElementById('sensorBtn').className = 'm-btn m-btn-gold';
-            showAlert('🍏 iOS / Android Adım Sayar Aktif! Telefonunuzla yürüyebilirsiniz.');
+            const hint = document.getElementById('sensorHint');
+            if (hint) hint.style.display = 'block';
+            showAlert('🍏 iOS / Android Adım Sayar Aktif! Ekranınız açık kaldığı sürece kesintisiz sayar.');
         }
 
         function stopMotionListener(message) {
@@ -1074,19 +1106,27 @@
             syncIntervalId = null;
             isSensorActive = false;
             flushPendingSteps();
+            releaseWakeLock();
             document.getElementById('sensorBtn').textContent = '📱 CANLI SENSÖRÜ BAŞLAT (Yürürken Say)';
             document.getElementById('sensorBtn').className = 'm-btn m-btn-blue';
+            const hint = document.getElementById('sensorHint');
+            if (hint) hint.style.display = 'none';
             if (message) showAlert(message);
         }
 
         // Sekme arka plana alındığında birikmiş adımları senkronize et; öne dönünce
         // (sensör hâlâ açık işaretliyse) dinleyiciyi kaldığı yerden devam ettir.
+        // NOT: Wake Lock spesifikasyonu gereği sekme gizlenince kilit tarayıcı
+        // tarafından otomatik serbest bırakılır - öne dönünce sensör hâlâ aktifse
+        // burada yeniden talep ediyoruz, yoksa bir sonraki manuel kilitlemede ekran
+        // yine kapanabilir.
         document.addEventListener('visibilitychange', () => {
             if (document.hidden) {
                 if (isSensorActive) flushPendingSteps();
             } else if (isSensorActive) {
                 window.removeEventListener('devicemotion', handleMotion);
                 window.addEventListener('devicemotion', handleMotion, false);
+                requestWakeLock();
             }
         });
         window.addEventListener('pagehide', () => { if (isSensorActive) flushPendingSteps(); });
