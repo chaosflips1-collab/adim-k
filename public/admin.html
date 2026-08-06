@@ -9,8 +9,13 @@
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Outfit', sans-serif; }
         body { background: #020617; color: #fff; min-height: 100vh; padding: 20px; display: flex; justify-content: center; }
         .container { max-width: 1000px; width: 100%; }
-        .header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 20px; }
+        .header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; padding-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 20px; }
         .logo { font-size: 20px; font-weight: 800; color: #c084fc; display: flex; align-items: center; gap: 8px; }
+
+        @media (max-width: 480px) {
+            body { padding: 14px; }
+            .logo { font-size: 16px; }
+        }
         .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 24px; }
         .stat-card { background: rgba(30, 27, 75, 0.5); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 18px; padding: 18px; text-align: center; }
         .stat-val { font-size: 26px; font-weight: 800; color: #34d399; margin-top: 4px; }
@@ -24,7 +29,7 @@
         .table th, .table td { padding: 10px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.06); }
         .table th { color: #94a3b8; font-weight: 700; }
         .hidden { display: none !important; }
-        #alertBox { position: fixed; top: 20px; right: 20px; background: #10b981; color: white; padding: 12px 20px; border-radius: 14px; font-size: 13px; font-weight: 700; display: none; z-index: 9999; }
+        #alertBox { position: fixed; top: 20px; right: 20px; left: 20px; max-width: 320px; margin-left: auto; background: #10b981; color: white; padding: 12px 20px; border-radius: 14px; font-size: 13px; font-weight: 700; display: none; z-index: 9999; word-wrap: break-word; }
         .login-box { max-width: 380px; width: 100%; background: #1e1b4b; border: 1px solid rgba(255,255,255,0.2); border-radius: 28px; padding: 28px; text-align: center; margin: 60px auto; }
     </style>
 </head>
@@ -95,19 +100,24 @@
             <!-- KULLANICI LİSTESİ -->
             <div class="card">
                 <div class="card-title">👥 Son Kaydolan Kullanıcılar</div>
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>Ad Soyad</th>
-                            <th>E-posta</th>
-                            <th>Seviye</th>
-                            <th>Toplam Adım</th>
-                            <th>YürüPara</th>
-                            <th>Kayıt Tarihi</th>
-                        </tr>
-                    </thead>
-                    <tbody id="userTableBody"></tbody>
-                </table>
+                <!-- 6 sütunlu tablo telefon genişliğine sığmaz; sarmalayıcı olmadan
+                     eskiden sayfa yatayda taşıyordu. Sütunları sıkıştırmak yerine
+                     sadece bu kutunun içinde yatay kaydırma sağlıyoruz. -->
+                <div style="overflow-x: auto;">
+                    <table class="table" style="min-width: 640px;">
+                        <thead>
+                            <tr>
+                                <th>Ad Soyad</th>
+                                <th>E-posta</th>
+                                <th>Seviye</th>
+                                <th>Toplam Adım</th>
+                                <th>YürüPara</th>
+                                <th>Kayıt Tarihi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="userTableBody"></tbody>
+                    </table>
+                </div>
             </div>
         </div>
 

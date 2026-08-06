@@ -27,6 +27,7 @@
             justify-content: center;
             align-items: center;
             min-height: 100vh;
+            min-height: 100dvh; /* mobil tarayıcıların adres çubuğu/araç çubuğu yüzünden 100vh gerçek görünür alanı yanlış ölçer */
             color: #ffffff;
             overflow-x: hidden;
         }
@@ -35,6 +36,7 @@
             width: 100%;
             max-width: 440px;
             height: 100vh;
+            height: 100dvh;
             max-height: 920px;
             background: radial-gradient(circle at top, #1e1b4b 0%, #0f172a 60%, #020617 100%);
             display: flex;
@@ -47,7 +49,7 @@
         }
 
         @media (max-width: 500px) {
-            .app-shell { max-height: 100vh; border-radius: 0; box-shadow: none; border: none; }
+            .app-shell { max-height: 100vh; max-height: 100dvh; border-radius: 0; box-shadow: none; border: none; }
         }
 
         .mobile-notch {
@@ -69,10 +71,15 @@
         .notch-camera { width: 10px; height: 10px; background: #1e1b4b; border-radius: 50%; }
 
         .app-header {
-            padding: 38px 18px 12px 18px;
+            /* Gerçek çentik/Dynamic Island cihazlarda üst boşluk sabit 38px'ten daha
+               büyük olabilir; env(safe-area-inset-top) gerçek değeri kullanır, hangisi
+               büyükse o uygulanır (masaüstü/çentiksiz cihazlarda 38px'te kalır). */
+            padding: max(38px, env(safe-area-inset-top)) 18px 12px 18px;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
             background: rgba(15, 23, 42, 0.7);
             backdrop-filter: blur(16px);
             border-bottom: 1px solid rgba(255, 255, 255, 0.08);
@@ -83,7 +90,8 @@
         .brand-icon { font-size: 20px; background: linear-gradient(135deg, #a855f7, #ec4899); width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 12px; }
         .brand-name { font-size: 17px; font-weight: 800; }
 
-        .header-actions { display: flex; align-items: center; gap: 6px; }
+        .header-actions { display: flex; align-items: center; gap: 6px; min-width: 0; }
+        #userName { max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
         .level-pill {
             background: linear-gradient(135deg, #a855f7, #3b82f6);
@@ -107,7 +115,10 @@
             flex: 1;
             overflow-y: auto;
             padding: 16px;
-            padding-bottom: 95px;
+            /* Alt navigasyon ev tuşu şeridi olan iPhone'larda daha da uzuyor
+               (bkz. .bottom-nav); son içerik onun altında kalmasın diye aynı
+               güvenli alan miktarını buraya da ekliyoruz. */
+            padding-bottom: calc(95px + env(safe-area-inset-bottom));
         }
 
         .app-body::-webkit-scrollbar { display: none; }
@@ -195,14 +206,16 @@
             bottom: 0;
             left: 0;
             width: 100%;
-            height: 70px;
+            height: calc(70px + env(safe-area-inset-bottom));
             background: rgba(15, 23, 42, 0.94);
             backdrop-filter: blur(20px);
             border-top: 1px solid rgba(255, 255, 255, 0.1);
             display: flex;
             justify-content: space-around;
             align-items: center;
-            padding-bottom: 8px;
+            /* Ev tuşu şeridi olan iPhone'larda (X ve sonrası) ikonlar şeridin
+               altında/üstünde kalmasın diye gerçek güvenli alan payı ekleniyor. */
+            padding-bottom: max(8px, env(safe-area-inset-bottom));
             z-index: 900;
         }
 
@@ -235,7 +248,10 @@
         .modal { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(2, 6, 23, 0.85); backdrop-filter: blur(12px); display: flex; align-items: center; justify-content: center; z-index: 2000; padding: 20px; }
         .modal-card { background: #1e1b4b; border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 28px; padding: 22px; text-align: center; width: 100%; max-width: 320px; }
 
-        #alertBox { position: absolute; top: 60px; left: 50%; transform: translateX(-50%); background: rgba(16, 185, 129, 0.95); color: white; padding: 8px 16px; border-radius: 18px; font-size: 11px; font-weight: 700; box-shadow: 0 10px 25px rgba(0,0,0,0.5); display: none; z-index: 3000; white-space: nowrap; }
+        /* Uzun bildirim mesajları (ör. ödül/diyet açıklamaları) eskiden tek satıra
+           sığdırılmaya (white-space: nowrap) çalışıldığı için ekran dışına taşıp
+           kırpılıyordu; artık gerekirse birden fazla satıra sarıyor. */
+        #alertBox { position: absolute; top: 60px; left: 50%; transform: translateX(-50%); max-width: calc(100% - 32px); background: rgba(16, 185, 129, 0.95); color: white; padding: 8px 16px; border-radius: 18px; font-size: 11px; font-weight: 700; box-shadow: 0 10px 25px rgba(0,0,0,0.5); display: none; z-index: 3000; white-space: normal; text-align: center; }
         .hidden { display: none !important; }
     </style>
 </head>
@@ -700,11 +716,11 @@
                     const name = escapeHtml(u.name);
                     container.innerHTML += `
                         <div class="m-row">
-                            <div style="display:flex; align-items:center; gap:8px;">
-                                <span style="font-weight:800; font-size:14px;">${medals[i] || i+1}</span>
-                                <div><strong>${name}</strong><div style="font-size:9px; color:#94a3b8;">Lv.${u.level || 1} • 🔥 ${u.streak || 1} Gün</div></div>
+                            <div style="display:flex; align-items:center; gap:8px; min-width:0; flex:1;">
+                                <span style="font-weight:800; font-size:14px; flex-shrink:0;">${medals[i] || i+1}</span>
+                                <div style="min-width:0; overflow:hidden;"><strong style="display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${name}</strong><div style="font-size:9px; color:#94a3b8;">Lv.${u.level || 1} • 🔥 ${u.streak || 1} Gün</div></div>
                             </div>
-                            <div style="text-align:right;"><span style="color:#c084fc; font-weight:800; font-size:12px;">${u.steps.toLocaleString('tr-TR')} Adım</span></div>
+                            <div style="text-align:right; flex-shrink:0; padding-left:8px;"><span style="color:#c084fc; font-weight:800; font-size:12px;">${u.steps.toLocaleString('tr-TR')} Adım</span></div>
                         </div>
                     `;
                 });
@@ -734,16 +750,16 @@
                     const title = escapeHtml(r.title);
                     const desc = escapeHtml(r.description);
                     container.innerHTML += `
-                        <div class="m-list-card" style="display:flex; justify-content:space-between; align-items:center;">
-                            <div>
-                                <div style="display:flex; align-items:center; gap:6px;">
-                                    <strong style="font-size:13px;">${escapeHtml(r.icon || '🎁')} ${title}</strong>
+                        <div class="m-list-card" style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+                            <div style="min-width:0; flex:1;">
+                                <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                                    <strong style="font-size:13px; overflow-wrap:break-word;">${escapeHtml(r.icon || '🎁')} ${title}</strong>
                                     <span class="digital-tag">Dijital Kodu</span>
                                 </div>
-                                <span style="font-size:10px; color:#94a3b8; display:block; margin-top:2px;">${desc}</span>
+                                <span style="font-size:10px; color:#94a3b8; display:block; margin-top:2px; overflow-wrap:break-word;">${desc}</span>
                                 <div style="color:#34d399; font-weight:800; font-size:12px; margin-top:4px;">💳 ${r.pointsCost.toFixed(2)} YürüPara</div>
                             </div>
-                            <button class="m-btn m-btn-primary" style="padding:6px 12px; font-size:11px;" onclick="claimReward('${r._id}')">Kodu Al</button>
+                            <button class="m-btn m-btn-primary" style="padding:6px 12px; font-size:11px; flex-shrink:0;" onclick="claimReward('${r._id}')">Kodu Al</button>
                         </div>
                     `;
                 });
@@ -779,9 +795,9 @@
                     const title = escapeHtml(c.rewardTitle);
                     const code = escapeHtml(c.code);
                     cList.innerHTML += `
-                        <div style="background:rgba(255,255,255,0.05); padding:8px; border-radius:10px; margin-top:4px; display:flex; justify-content:space-between; font-size:11px;">
-                            <span>${title}</span>
-                            <span class="claim-code" style="color:#c084fc; font-family:monospace; font-weight:700; cursor:pointer;" data-code="${code}" title="Kopyalamak için tıkla">📋 ${code}</span>
+                        <div style="background:rgba(255,255,255,0.05); padding:8px; border-radius:10px; margin-top:4px; display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:11px;">
+                            <span style="min-width:0; overflow-wrap:break-word;">${title}</span>
+                            <span class="claim-code" style="color:#c084fc; font-family:monospace; font-weight:700; cursor:pointer; flex-shrink:0;" data-code="${code}" title="Kopyalamak için tıkla">📋 ${code}</span>
                         </div>
                     `;
                 });

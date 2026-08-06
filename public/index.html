@@ -27,6 +27,7 @@
             justify-content: center;
             align-items: center;
             min-height: 100vh;
+            min-height: 100dvh; /* mobil tarayıcıların adres çubuğu/araç çubuğu yüzünden 100vh gerçek görünür alanı yanlış ölçer */
             color: #ffffff;
             overflow: hidden;
         }
@@ -35,6 +36,7 @@
             width: 100%;
             max-width: 440px;
             height: 100vh;
+            height: 100dvh;
             max-height: 920px;
             background: radial-gradient(circle at top, #1e1b4b 0%, #0f172a 60%, #020617 100%);
             display: flex;
@@ -44,15 +46,21 @@
             position: relative;
             box-shadow: 0 25px 70px rgba(0, 0, 0, 0.8), 0 0 0 12px #0f172a;
             border-radius: 44px;
-            overflow: hidden;
+            overflow-y: auto;
+            overflow-x: hidden;
             border: 1px solid rgba(255, 255, 255, 0.15);
-            padding: 30px 24px;
+            /* İçerik kısa ekranlarda (ör. iPhone SE) sığmadığında önceden tamamen
+               kırpılıp erişilemez oluyordu (overflow: hidden + sabit yükseklik) -
+               artık gerekirse kaydırılabiliyor. Çentik/ev tuşu güvenli alanlarına da
+               taşmasın diye env(safe-area-inset-*) ekliyoruz. */
+            padding: max(30px, env(safe-area-inset-top)) 24px max(30px, env(safe-area-inset-bottom)) 24px;
             text-align: center;
         }
 
         @media (max-width: 500px) {
             .app-shell {
                 max-height: 100vh;
+                max-height: 100dvh;
                 border-radius: 0;
                 box-shadow: none;
                 border: none;
