@@ -247,6 +247,8 @@
 
         .modal { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(2, 6, 23, 0.85); backdrop-filter: blur(12px); display: flex; align-items: center; justify-content: center; z-index: 2000; padding: 20px; }
         .modal-card { background: #1e1b4b; border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 28px; padding: 22px; text-align: center; width: 100%; max-width: 320px; }
+        .game-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(2, 6, 23, 0.75); backdrop-filter: blur(8px); z-index: 20; padding: 20px; }
+        .game-claimed-badge { background: rgba(52, 211, 153, 0.15); color: #34d399; border: 1px solid rgba(52, 211, 153, 0.3); padding: 2px 6px; border-radius: 6px; font-size: 9px; font-weight: 700; margin-left: 6px; }
 
         /* Uzun bildirim mesajları (ör. ödül/diyet açıklamaları) eskiden tek satıra
            sığdırılmaya (white-space: nowrap) çalışıldığı için ekran dışına taşıp
@@ -433,24 +435,23 @@
 
             <!-- TAB 6: OYUNLAR -->
             <div id="tabGames" class="tab-page hidden">
-                <h3 style="font-size:15px; margin-bottom:4px;">🎮 Basit Oyunlar</h3>
-                <p style="font-size:11px; color:#94a3b8; margin-bottom:8px;">Oyna, süreyle bağlı YürüPara kazan! (1dk: 0.10 YP · 2dk: 0.20 YP · 3dk: 0.30 YP)</p>
-                <div style="font-size:10px; color:#94a3b8; margin-bottom:10px;" id="gamesTodayText">Bugün: 0 / 5 ödül hakkı kullanıldı</div>
+                <h3 style="font-size:15px; margin-bottom:4px;">🎮 Arcade Oyunlar</h3>
+                <p style="font-size:11px; color:#94a3b8; margin-bottom:10px;">Oyna, en az 1dk dayan, günün ilk turunda +0.10 YürüPara kazan!</p>
 
                 <div class="m-list-card" style="display:flex; align-items:center; gap:10px;">
-                    <div style="font-size:28px; flex-shrink:0;">🎯</div>
-                    <div style="flex:1; min-width:0;"><strong style="font-size:13px; display:block;">Hedef Vur</strong><span style="font-size:10px; color:#94a3b8;">Hedefi ne kadar hızlı vurabilirsin?</span></div>
-                    <button class="m-btn m-btn-primary" style="padding:8px 14px; font-size:11px; flex-shrink:0;" onclick="openGame('target')">Oyna</button>
+                    <div style="font-size:28px; flex-shrink:0;">✂️</div>
+                    <div style="flex:1; min-width:0;"><strong style="font-size:13px; display:block;">Meyve Dilimle<span class="game-claimed-badge hidden" id="claimedBadge_slice">✅ Bugün alındı</span></strong><span style="font-size:10px; color:#94a3b8;">Meyveleri kes, bombadan kaç!</span></div>
+                    <button class="m-btn m-btn-primary" style="padding:8px 14px; font-size:11px; flex-shrink:0;" onclick="openGame('slice')">Oyna</button>
                 </div>
                 <div class="m-list-card" style="display:flex; align-items:center; gap:10px;">
-                    <div style="font-size:28px; flex-shrink:0;">⚡</div>
-                    <div style="flex:1; min-width:0;"><strong style="font-size:13px; display:block;">Reaksiyon Ustası</strong><span style="font-size:10px; color:#94a3b8;">Yeşil yanınca hemen dokun!</span></div>
-                    <button class="m-btn m-btn-gold" style="padding:8px 14px; font-size:11px; flex-shrink:0;" onclick="openGame('reaction')">Oyna</button>
+                    <div style="font-size:28px; flex-shrink:0;">⚖️</div>
+                    <div style="flex:1; min-width:0;"><strong style="font-size:13px; display:block;">Denge Ustası<span class="game-claimed-badge hidden" id="claimedBadge_balance">✅ Bugün alındı</span></strong><span style="font-size:10px; color:#94a3b8;">Tam zamanında dokun, kuleni yükselt!</span></div>
+                    <button class="m-btn m-btn-gold" style="padding:8px 14px; font-size:11px; flex-shrink:0;" onclick="openGame('balance')">Oyna</button>
                 </div>
                 <div class="m-list-card" style="display:flex; align-items:center; gap:10px;">
-                    <div style="font-size:28px; flex-shrink:0;">🔢</div>
-                    <div style="flex:1; min-width:0;"><strong style="font-size:13px; display:block;">Hızlı Toplama</strong><span style="font-size:10px; color:#94a3b8;">Doğru toplamı bul, hızlı ol!</span></div>
-                    <button class="m-btn m-btn-blue" style="padding:8px 14px; font-size:11px; flex-shrink:0;" onclick="openGame('math')">Oyna</button>
+                    <div style="font-size:28px; flex-shrink:0;">🏃</div>
+                    <div style="flex:1; min-width:0;"><strong style="font-size:13px; display:block;">Sonsuz Koşu<span class="game-claimed-badge hidden" id="claimedBadge_runner">✅ Bugün alındı</span></strong><span style="font-size:10px; color:#94a3b8;">Engellerden kaç, ne kadar uzağa gidebilirsin?</span></div>
+                    <button class="m-btn m-btn-blue" style="padding:8px 14px; font-size:11px; flex-shrink:0;" onclick="openGame('runner')">Oyna</button>
                 </div>
             </div>
 
@@ -571,20 +572,16 @@
         </div>
     </div>
 
-    <!-- OYUN MODALI (3 oyun ortak modal, içeriği dinamik değişir) -->
-    <div id="gameModal" class="modal hidden">
-        <div class="modal-card" style="max-width:340px;">
-            <h3 id="gameTitle" style="font-size:15px; margin-bottom:6px;">🎯 Hedef Vur</h3>
-            <div style="display:flex; justify-content:space-between; font-size:11px; color:#cbd5e1; margin-bottom:8px;">
-                <span>⏱️ <span id="gameTimerText">00:00</span></span>
-                <span>⭐ Skor: <span id="gameScoreText">0</span></span>
-            </div>
-            <div id="gameArea" style="position:relative; width:100%; height:220px; background:rgba(255,255,255,0.05); border-radius:16px; overflow:hidden; margin-bottom:8px;"></div>
-            <div style="font-size:9px; color:#94a3b8; margin-bottom:10px;" id="gameTierText">1dk: 0.10 YP · 2dk: 0.20 YP · 3dk: 0.30 YP</div>
-            <button class="m-btn m-btn-primary" style="width:100%; font-size:12px;" id="gameStartBtn" onclick="startGame()">▶️ Başla</button>
-            <button class="m-btn m-btn-gold hidden" style="width:100%; font-size:12px;" id="gameEndBtn" onclick="endGame()">🏁 Bitir ve Ödülü Al</button>
-            <button class="m-btn m-btn-secondary" style="width:100%; margin-top:6px; font-size:11px;" onclick="closeGameModal()">Kapat</button>
+    <!-- TAM EKRAN OYUN GÖRÜNÜMÜ (3 arcade oyun ortak canvas sürücüsü, içeriği dinamik değişir) -->
+    <div id="gameView" class="hidden" style="position:absolute; top:0; left:0; width:100%; height:100%; z-index:3000; background: radial-gradient(circle at top, #1e1b4b 0%, #0f172a 60%, #020617 100%); overflow:hidden;">
+        <div id="gameHud" style="position:absolute; top:0; left:0; right:0; z-index:10; display:flex; justify-content:space-between; align-items:center; padding: max(16px, env(safe-area-inset-top)) 16px 10px; background:rgba(15,23,42,0.55); backdrop-filter:blur(10px);">
+            <button onclick="exitGameView()" style="background:rgba(255,255,255,0.1); border:none; color:#fff; width:34px; height:34px; border-radius:50%; font-size:16px; cursor:pointer;">✕</button>
+            <div id="gameHudTitle" style="font-size:13px; font-weight:700; color:#fff;"></div>
+            <div id="gameHudScore" style="font-size:13px; font-weight:800; color:#fbbf24;">⭐ 0</div>
         </div>
+        <canvas id="gameCanvas" style="position:absolute; inset:0; width:100%; height:100%; touch-action:none;"></canvas>
+        <div id="gamePreOverlay" class="game-overlay"><div class="modal-card" style="max-width:300px;"></div></div>
+        <div id="gameOverOverlay" class="game-overlay hidden"><div class="modal-card" style="max-width:300px;"></div></div>
     </div>
 
     <!-- PREMIUM ABONELİK PAYWALL (günlük 15.000 adım limitine ulaşınca açılır) -->
@@ -680,6 +677,10 @@
                 const data = await res.json();
                 updateUI(data.user);
                 renderClaims(data.claims);
+                if (data.gamesClaimedToday) {
+                    gamesClaimedToday = data.gamesClaimedToday;
+                    renderGamesTab();
+                }
             } catch (err) {}
         }
 
@@ -736,7 +737,6 @@
             });
 
             document.getElementById('adWatchCountText').textContent = `${u.adWatchesToday || 0} / 3 bugün`;
-            document.getElementById('gamesTodayText').textContent = `Bugün: ${u.gamesPlayedToday || 0} / 5 ödül hakkı kullanıldı`;
 
             // Bu özellikten önce kayıt olmuş hesaplar için tek seferlik onay ekranı
             if (u.privacyAccepted !== true) {
@@ -1037,6 +1037,7 @@
             } else if (tab === 'games') {
                 document.querySelectorAll('.nav-item')[5].classList.add('active');
                 document.getElementById('tabGames').classList.remove('hidden');
+                renderGamesTab();
             } else if (tab === 'profile') {
                 document.querySelectorAll('.nav-item')[6].classList.add('active');
                 document.getElementById('tabProfile').classList.remove('hidden');
@@ -1503,199 +1504,608 @@
             }
         }
 
-        // --- Basit Oyunlar ---
+        // --- Arcade Oyunlar (tam ekran canvas sürücüsü) ---
+        let gamesClaimedToday = { slice: false, balance: false, runner: false };
         let currentGame = null;
-        let gameStartTime = 0;
-        let gameScore = 0;
-        let gameTimerInterval = null;
-        let gameLogicTimer = null;
+        let gameCtx = null;
+        let gameRAF = null;
+        let gameState = null;
+        let gamePointerHandlers = null;
+        let gameCssW = 0;
+        let gameCssH = 0;
 
-        function openGame(type) {
-            currentGame = type;
-            gameScore = 0;
-            document.getElementById('gameScoreText').textContent = '0';
-            document.getElementById('gameTimerText').textContent = '00:00';
-            document.getElementById('gameTierText').textContent = `1 dk'ya (0.10 YP) 60sn kaldı`;
-            document.getElementById('gameStartBtn').classList.remove('hidden');
-            document.getElementById('gameEndBtn').classList.add('hidden');
-            const titles = { target: '🎯 Hedef Vur', reaction: '⚡ Reaksiyon Ustası', math: '🔢 Hızlı Toplama' };
-            const hints = {
-                target: 'Başla\'ya basınca hedef belirecek',
-                reaction: 'Başla\'ya basınca yeşil ışığı bekleyin',
-                math: 'Başla\'ya basınca sorular gelecek'
-            };
-            document.getElementById('gameTitle').textContent = titles[type];
-            const area = document.getElementById('gameArea');
-            area.innerHTML = `<div style="display:flex; align-items:center; justify-content:center; height:100%; font-size:11px; color:#94a3b8; text-align:center; padding:0 20px;">${hints[type]}</div>`;
-            document.getElementById('gameModal').classList.remove('hidden');
+        const GAME_META = {
+            slice: { title: '✂️ Meyve Dilimle', icon: '✂️', instructions: 'Parmağını ekranda kaydırarak meyveleri kes, bombaya (💣) dokunma!' },
+            balance: { title: '⚖️ Denge Ustası', icon: '⚖️', instructions: 'Hareketli işaret yeşil bölgeye geldiğinde ekrana dokun, kuleni yükselt!' },
+            runner: { title: '🏃 Sonsuz Koşu', icon: '🏃', instructions: 'Zıplamak için ekrana dokun, eğilmek için hızlıca parmağını aşağı kaydır. Engellerden kaç!' }
+        };
+
+        function renderGamesTab() {
+            Object.keys(gamesClaimedToday).forEach(gid => {
+                const badge = document.getElementById(`claimedBadge_${gid}`);
+                if (!badge) return;
+                if (gamesClaimedToday[gid]) badge.classList.remove('hidden');
+                else badge.classList.add('hidden');
+            });
         }
 
-        function closeGameModal() {
-            stopGameLogic();
-            document.getElementById('gameModal').classList.add('hidden');
-        }
+        function openGame(gameId) {
+            currentGame = gameId;
+            document.getElementById('gameView').classList.remove('hidden');
+            document.getElementById('gameHudTitle').textContent = GAME_META[gameId].title;
+            document.getElementById('gameHudScore').textContent = '⭐ 0';
 
-        function stopGameLogic() {
-            clearInterval(gameTimerInterval);
-            clearInterval(gameLogicTimer);
-            clearTimeout(gameLogicTimer);
-            gameLogicTimer = null;
+            const canvas = document.getElementById('gameCanvas');
+            const dpr = window.devicePixelRatio || 1;
+            gameCssW = canvas.clientWidth;
+            gameCssH = canvas.clientHeight;
+            canvas.width = gameCssW * dpr;
+            canvas.height = gameCssH * dpr;
+            gameCtx = canvas.getContext('2d');
+            // dpr ölçeğini burada bir kez transform'a gömüyoruz - oyun mantığı
+            // ve render fonksiyonları CSS-piksel koordinatlarıyla çalışabilir,
+            // her çizim çağrısında ayrıca dpr hesabı yapmaya gerek kalmaz.
+            gameCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+            const meta = GAME_META[gameId];
+            const claimNote = gamesClaimedToday[gameId]
+                ? '✅ Bugünkü ödülünü aldın, istediğin kadar pratik yapabilirsin!'
+                : '🎁 İlk oyunun bugün +0.10 YürüPara kazandırır!';
+
+            const preCard = document.querySelector('#gamePreOverlay .modal-card');
+            preCard.innerHTML = `
+                <div style="font-size:40px; margin-bottom:8px;">${meta.icon}</div>
+                <h3 style="font-size:16px; margin-bottom:8px;">${meta.title}</h3>
+                <p style="font-size:12px; color:#94a3b8; margin-bottom:12px; line-height:1.5;">${meta.instructions}</p>
+                <p style="font-size:11px; color:#34d399; font-weight:700; margin-bottom:14px;">${claimNote}</p>
+                <button class="m-btn m-btn-primary" style="width:100%; font-size:13px;" onclick="startGame()">▶️ Başla</button>
+            `;
+            document.getElementById('gamePreOverlay').classList.remove('hidden');
+            document.getElementById('gameOverOverlay').classList.add('hidden');
         }
 
         function startGame() {
-            gameStartTime = Date.now();
-            gameScore = 0;
-            document.getElementById('gameScoreText').textContent = '0';
-            document.getElementById('gameStartBtn').classList.add('hidden');
-            document.getElementById('gameEndBtn').classList.remove('hidden');
+            document.getElementById('gamePreOverlay').classList.add('hidden');
 
-            // Bug-fix: sunucu tarafında oyun oturumunun GERÇEK başlangıç
-            // zamanını damgalar (gameSessionStart). /games/reward artık
-            // istemcinin bildirdiği süreye güvenmiyor, süreyi bu damgadan
-            // hesaplıyor - oyunu hiç oynamadan doğrudan API'ye büyük bir
-            // durationMs göndererek anında maksimum ödül alınamaz.
+            // Bug-fix (bkz. eski oyun modülü): sunucu tarafında oyun oturumunun
+            // GERÇEK başlangıç zamanını damgalar (gameSessionStart). Süre veya
+            // skor gövdede GÖNDERİLMİYOR - /games/reward süreyi tamamen bu
+            // sunucu damgasından hesaplar, bu sertleştirme korunuyor.
             fetch('/api/v2/games/start', {
                 method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` }
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ gameId: currentGame })
             }).catch(() => {});
 
-            clearInterval(gameTimerInterval);
-            gameTimerInterval = setInterval(updateGameTimerDisplay, 250);
-            updateGameTimerDisplay();
+            gameState = currentGame === 'slice' ? createSliceGameState(gameCssW, gameCssH)
+                : currentGame === 'balance' ? createBalanceGameState(gameCssW, gameCssH)
+                : createRunnerGameState(gameCssW, gameCssH);
 
-            const area = document.getElementById('gameArea');
-            area.innerHTML = '';
-            if (currentGame === 'target') startTargetGame(area);
-            else if (currentGame === 'reaction') startReactionGame(area);
-            else if (currentGame === 'math') startMathGame(area);
+            const canvas = document.getElementById('gameCanvas');
+            function getPos(e) {
+                const rect = canvas.getBoundingClientRect();
+                return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+            }
+            const onDown = (e) => { const p = getPos(e); if (gameState) gameState.onPointerDown(p.x, p.y); };
+            const onMove = (e) => { const p = getPos(e); if (gameState) gameState.onPointerMove(p.x, p.y); };
+            const onUp = (e) => { const p = getPos(e); if (gameState) gameState.onPointerUp(p.x, p.y); };
+
+            canvas.addEventListener('pointerdown', onDown);
+            canvas.addEventListener('pointermove', onMove);
+            canvas.addEventListener('pointerup', onUp);
+            gamePointerHandlers = { down: onDown, move: onMove, up: onUp, canvas };
+
+            gameRAF = requestAnimationFrame(gameLoop);
         }
 
-        function updateGameTimerDisplay() {
-            const elapsed = Date.now() - gameStartTime;
-            const totalSec = Math.floor(elapsed / 1000);
-            const mm = String(Math.floor(totalSec / 60)).padStart(2, '0');
-            const ss = String(totalSec % 60).padStart(2, '0');
-            document.getElementById('gameTimerText').textContent = `${mm}:${ss}`;
-
-            const tierEl = document.getElementById('gameTierText');
-            if (elapsed >= 180000) tierEl.textContent = '✅ 3 dk tamamlandı - maksimum 0.30 YP kazandınız!';
-            else if (elapsed >= 120000) tierEl.textContent = `✅ 0.20 YP kazandınız · 0.30 YP'ye ${Math.ceil((180000 - elapsed) / 1000)}sn kaldı`;
-            else if (elapsed >= 60000) tierEl.textContent = `✅ 0.10 YP kazandınız · 0.20 YP'ye ${Math.ceil((120000 - elapsed) / 1000)}sn kaldı`;
-            else tierEl.textContent = `0.10 YP'ye ${Math.ceil((60000 - elapsed) / 1000)}sn kaldı`;
+        function gameLoop(timestamp) {
+            if (!gameState || !gameState.running) return;
+            const dt = Math.min(timestamp - (gameState.lastTs || timestamp), 50);
+            gameState.lastTs = timestamp;
+            gameState.update(dt);
+            gameState.render(gameCtx, dt);
+            document.getElementById('gameHudScore').textContent = `⭐ ${gameState.score}`;
+            if (gameState.running) gameRAF = requestAnimationFrame(gameLoop);
+            else endRound(gameState.score);
         }
 
-        async function endGame() {
-            stopGameLogic();
-            document.getElementById('gameStartBtn').classList.remove('hidden');
-            document.getElementById('gameEndBtn').classList.add('hidden');
+        function removeGamePointerListeners() {
+            if (gamePointerHandlers) {
+                const { down, move, up, canvas } = gamePointerHandlers;
+                canvas.removeEventListener('pointerdown', down);
+                canvas.removeEventListener('pointermove', move);
+                canvas.removeEventListener('pointerup', up);
+                gamePointerHandlers = null;
+            }
+        }
 
+        async function endRound(score) {
+            removeGamePointerListeners();
+            gameRAF = null;
+            gameState = null;
+
+            let res = null, data = null;
             try {
-                // Bug-fix: durationMs artık gönderilmiyor - sunucu süreyi
-                // kendi damgaladığı gameSessionStart'tan hesaplıyor (bkz.
-                // startGame() ve server.js /api/v2/games/reward).
-                const res = await fetch('/api/v2/games/reward', {
+                res = await fetch('/api/v2/games/reward', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
                 });
-                const data = await res.json();
-                showAlert(data.message || data.error);
-                fetchUserData();
+                data = await res.json();
             } catch (err) {
-                showAlert('Oyun ödülü hatası.');
-            }
-            document.getElementById('gameModal').classList.add('hidden');
-        }
-
-        // Oyun 1: Hedef Vur - hedef her tıklamada rastgele bir konuma zıplar
-        function startTargetGame(area) {
-            const target = document.createElement('button');
-            target.textContent = '🎯';
-            target.style.cssText = 'position:absolute; width:44px; height:44px; font-size:22px; border-radius:50%; border:none; background:linear-gradient(135deg,#a855f7,#ec4899); cursor:pointer;';
-            area.appendChild(target);
-
-            function moveTarget() {
-                const maxX = Math.max(area.clientWidth - 44, 0);
-                const maxY = Math.max(area.clientHeight - 44, 0);
-                target.style.left = `${Math.random() * maxX}px`;
-                target.style.top = `${Math.random() * maxY}px`;
+                res = null;
+                data = null;
             }
 
-            target.addEventListener('click', () => {
-                gameScore++;
-                document.getElementById('gameScoreText').textContent = gameScore;
-                moveTarget();
-            });
-            moveTarget();
-        }
+            const hsKey = 'hs_' + currentGame;
+            const prevBest = parseInt(localStorage.getItem(hsKey) || '0', 10);
+            const best = Math.max(prevBest, score);
+            localStorage.setItem(hsKey, String(best));
+            const isNewRecord = score > 0 && score > prevBest;
 
-        // Oyun 2: Reaksiyon Ustası - daire rastgele aralıklarla yeşile döner, sadece
-        // yeşilken tıklamak puan kazandırır
-        function startReactionGame(area) {
-            const circle = document.createElement('button');
-            circle.style.cssText = 'position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:90px; height:90px; border-radius:50%; border:none; background:#475569; transition:background 0.15s;';
-            area.appendChild(circle);
-            let isGreen = false;
-
-            function scheduleFlash() {
-                gameLogicTimer = setTimeout(() => {
-                    isGreen = true;
-                    circle.style.background = '#22c55e';
-                    gameLogicTimer = setTimeout(() => {
-                        if (isGreen) {
-                            isGreen = false;
-                            circle.style.background = '#475569';
-                            scheduleFlash();
-                        }
-                    }, 1000);
-                }, 800 + Math.random() * 1500);
+            let messageHtml;
+            if (res && res.ok && data.reward > 0) {
+                messageHtml = `<p style="font-size:12px; color:#34d399; font-weight:700; margin:10px 0;">✅ +0.10 YürüPara kazandın!</p>`;
+                gamesClaimedToday[currentGame] = true;
+                renderGamesTab();
+            } else if (res && res.ok && data.alreadyClaimedToday) {
+                messageHtml = `<p style="font-size:12px; color:#cbd5e1; font-weight:700; margin:10px 0;">Bugünkü ödülünü zaten almıştın, harika oynadın!</p>`;
+                gamesClaimedToday[currentGame] = true;
+                renderGamesTab();
+            } else if (res && res.ok) {
+                messageHtml = `<p style="font-size:12px; color:#cbd5e1; font-weight:700; margin:10px 0;">${escapeHtml(data.message || 'Tur tamamlandı!')}</p>`;
+            } else {
+                messageHtml = `<p style="font-size:12px; color:#cbd5e1; font-weight:700; margin:10px 0;">Ödül için en az 1 dk oynamalısın, tekrar dene!</p>`;
             }
 
-            circle.addEventListener('click', () => {
-                if (isGreen) {
-                    isGreen = false;
-                    gameScore++;
-                    document.getElementById('gameScoreText').textContent = gameScore;
-                    circle.style.background = '#475569';
-                    clearTimeout(gameLogicTimer);
-                    scheduleFlash();
-                }
-            });
+            const overCard = document.querySelector('#gameOverOverlay .modal-card');
+            overCard.innerHTML = `
+                <div style="font-size:36px; margin-bottom:6px;">🏁</div>
+                <h3 style="font-size:16px; margin-bottom:6px;">Tur Bitti!</h3>
+                <div style="font-size:26px; font-weight:800; color:#fbbf24; margin:8px 0;">⭐ ${score}</div>
+                <div style="font-size:11px; color:#94a3b8;">En İyi Skor: <strong style="color:#c084fc;">${best}</strong>${isNewRecord ? ' 🎉 Yeni Rekor!' : ''}</div>
+                ${messageHtml}
+                <button class="m-btn m-btn-primary" style="width:100%; font-size:13px; margin-top:6px;" onclick="startGame()">🔄 Tekrar Oyna</button>
+                <button class="m-btn m-btn-secondary" style="width:100%; margin-top:8px; font-size:11px;" onclick="exitGameView()">Çık</button>
+            `;
+            document.getElementById('gameOverOverlay').classList.remove('hidden');
 
-            scheduleFlash();
+            if (res && res.ok) fetchUserData();
         }
 
-        // Oyun 3: Hızlı Toplama - iki basamaklı toplama sorusu, 4 seçenekten doğrusunu seç
-        function startMathGame(area) {
-            function newQuestion() {
-                const a = Math.floor(Math.random() * 9) + 1;
-                const b = Math.floor(Math.random() * 9) + 1;
-                const correct = a + b;
-                const options = new Set([correct]);
-                while (options.size < 4) {
-                    const wrong = correct + Math.floor(Math.random() * 9) - 4;
-                    if (wrong !== correct && wrong >= 0) options.add(wrong);
-                }
-                const optArr = Array.from(options).sort(() => Math.random() - 0.5);
+        function exitGameView() {
+            if (gameRAF) { cancelAnimationFrame(gameRAF); gameRAF = null; }
+            if (gameState) { gameState.running = false; gameState = null; }
+            removeGamePointerListeners();
+            document.getElementById('gameView').classList.add('hidden');
+            // Yarıda kalmış bir tur ödül talep etmiyor (sunucudaki gameSessionStart
+            // bir sonraki /games/start ile üzerine yazılana kadar zararsızca durur),
+            // ama tamamlanmış bir tur sonrası "Çık" ile buraya gelindiyse header'daki
+            // YürüPara toplamının güncel kalması için yine de yenileriz.
+            fetchUserData();
+        }
 
-                area.innerHTML = `
-                    <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; gap:12px;">
-                        <div style="font-size:26px; font-weight:800;">${a} + ${b} = ?</div>
-                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; width:80%;">
-                            ${optArr.map(o => `<button class="m-btn m-btn-secondary mathOpt" data-val="${o}" style="font-size:14px; padding:10px;">${o}</button>`).join('')}
-                        </div>
-                    </div>
-                `;
-                area.querySelectorAll('.mathOpt').forEach(btn => {
-                    btn.addEventListener('click', () => {
-                        if (parseInt(btn.dataset.val) === correct) {
-                            gameScore++;
-                            document.getElementById('gameScoreText').textContent = gameScore;
-                        }
-                        newQuestion();
+        // --- Oyun 1: Meyve Dilimle ---
+        function createSliceGameState(w, h) {
+            return {
+                w, h,
+                score: 0,
+                running: true,
+                lastTs: 0,
+                elapsed: 0,
+                spawnTimer: 0,
+                items: [],
+                particles: [],
+                trail: [],
+                pointerDown: false,
+                fruitIdx: 0,
+                comboCount: 0,
+                comboWindowStart: -1000,
+                GRAVITY: 0.0022,
+                deathFlash: false,
+
+                spawnItem() {
+                    const isBomb = Math.random() < 0.15;
+                    const fruitEmojis = ['🍎', '🍊', '🍉', '🍇'];
+                    const emoji = isBomb ? '💣' : fruitEmojis[this.fruitIdx++ % fruitEmojis.length];
+                    const x = this.w * 0.15 + Math.random() * this.w * 0.7;
+                    const vy0 = -(0.85 + Math.random() * 0.3) * Math.sqrt(2 * this.GRAVITY * this.h * 0.6);
+                    this.items.push({
+                        x, y: this.h + 30,
+                        vx: (Math.random() - 0.5) * 0.15,
+                        vy: vy0,
+                        rot: 0,
+                        type: isBomb ? 'bomb' : 'fruit',
+                        emoji, radius: 26, sliced: false
                     });
-                });
-            }
-            newQuestion();
+                },
+
+                update(dt) {
+                    this.elapsed += dt;
+                    if (this.elapsed >= 90000) { this.running = false; return; }
+
+                    const spawnInterval = Math.max(450, 700 - (this.elapsed / 90000) * 250);
+                    this.spawnTimer += dt;
+                    if (this.spawnTimer >= spawnInterval) {
+                        this.spawnTimer = 0;
+                        this.spawnItem();
+                    }
+
+                    this.items.forEach(it => {
+                        it.vy += this.GRAVITY * dt;
+                        it.x += it.vx * dt;
+                        it.y += it.vy * dt;
+                        it.rot += 0.002 * dt;
+                    });
+                    this.items = this.items.filter(it => it.y < this.h + 60);
+
+                    this.particles.forEach(p => {
+                        p.x += p.vx * dt;
+                        p.y += p.vy * dt;
+                        p.age += dt;
+                    });
+                    this.particles = this.particles.filter(p => p.age < 300);
+
+                    this.trail = this.trail.filter(pt => this.elapsed - pt.t < 120);
+                },
+
+                sliceItem(it) {
+                    it.sliced = true;
+                    this.items.splice(this.items.indexOf(it), 1);
+                    for (let i = 0; i < 2; i++) {
+                        this.particles.push({
+                            x: it.x, y: it.y, age: 0,
+                            vx: (i === 0 ? -1 : 1) * (0.08 + Math.random() * 0.05),
+                            vy: -0.15 - Math.random() * 0.1,
+                            emoji: it.emoji
+                        });
+                    }
+                    if (it.type === 'bomb') {
+                        this.running = false;
+                        this.deathFlash = true;
+                        return;
+                    }
+                    this.score++;
+                    if (this.elapsed - this.comboWindowStart > 300) {
+                        this.comboWindowStart = this.elapsed;
+                        this.comboCount = 1;
+                    } else {
+                        this.comboCount++;
+                        if (this.comboCount === 3) this.score += 3;
+                    }
+                },
+
+                onPointerDown(x, y) {
+                    this.pointerDown = true;
+                    this.trail = [{ x, y, t: this.elapsed }];
+                },
+                onPointerMove(x, y) {
+                    if (!this.pointerDown || !this.running) return;
+                    const prev = this.trail[this.trail.length - 1];
+                    this.trail.push({ x, y, t: this.elapsed });
+                    if (!prev) return;
+                    for (const it of this.items.slice()) {
+                        if (it.sliced) continue;
+                        const d = distToSegment(it.x, it.y, prev.x, prev.y, x, y);
+                        if (d <= it.radius) this.sliceItem(it);
+                    }
+                },
+                onPointerUp() {
+                    this.pointerDown = false;
+                    this.trail = [];
+                },
+
+                render(ctx) {
+                    ctx.clearRect(0, 0, this.w, this.h);
+                    this.items.forEach(it => {
+                        ctx.save();
+                        ctx.translate(it.x, it.y);
+                        ctx.rotate(it.rot);
+                        ctx.font = '38px sans-serif';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillText(it.emoji, 0, 0);
+                        ctx.restore();
+                    });
+                    this.particles.forEach(p => {
+                        ctx.save();
+                        ctx.globalAlpha = Math.max(0, 1 - p.age / 300);
+                        ctx.font = '26px sans-serif';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillText(p.emoji, p.x, p.y);
+                        ctx.restore();
+                    });
+                    if (this.trail.length > 1) {
+                        ctx.save();
+                        ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+                        ctx.lineWidth = 4;
+                        ctx.lineCap = 'round';
+                        ctx.beginPath();
+                        this.trail.forEach((pt, i) => i === 0 ? ctx.moveTo(pt.x, pt.y) : ctx.lineTo(pt.x, pt.y));
+                        ctx.stroke();
+                        ctx.restore();
+                    }
+                    if (this.deathFlash) {
+                        ctx.fillStyle = 'rgba(239,68,68,0.35)';
+                        ctx.fillRect(0, 0, this.w, this.h);
+                        this.deathFlash = false;
+                    }
+                }
+            };
+        }
+
+        function distToSegment(px, py, x1, y1, x2, y2) {
+            const dx = x2 - x1, dy = y2 - y1;
+            const lenSq = dx * dx + dy * dy;
+            let t = lenSq === 0 ? 0 : ((px - x1) * dx + (py - y1) * dy) / lenSq;
+            t = Math.max(0, Math.min(1, t));
+            const cx = x1 + t * dx, cy = y1 + t * dy;
+            return Math.hypot(px - cx, py - cy);
+        }
+
+        // --- Oyun 2: Denge Ustası ---
+        function createBalanceGameState(w, h) {
+            const center = w / 2;
+            const amplitude = Math.min(w * 0.35, 140);
+            return {
+                w, h,
+                score: 0,
+                running: true,
+                lastTs: 0,
+                elapsed: 0,
+                barY: h * 0.5,
+                center,
+                amplitude,
+                angularSpeed: 0.0016,
+                markerX: center,
+                targetWidth: Math.max(36, w * 0.14),
+                targetStart: center - Math.max(36, w * 0.14) / 2,
+                lives: 3,
+                streak: 0,
+                towerBlocks: [],
+                flash: null,
+                flashTimer: 0,
+
+                update(dt) {
+                    this.elapsed += dt;
+                    this.markerX = this.center + this.amplitude * Math.sin(this.elapsed * this.angularSpeed);
+                    if (this.flashTimer > 0) {
+                        this.flashTimer -= dt;
+                        if (this.flashTimer <= 0) this.flash = null;
+                    }
+                },
+
+                onPointerDown() {
+                    if (!this.running) return;
+                    const zoneStart = this.targetStart, zoneEnd = this.targetStart + this.targetWidth;
+                    if (this.markerX >= zoneStart && this.markerX <= zoneEnd) {
+                        this.score++;
+                        this.streak++;
+                        if (this.streak >= 5) this.score++;
+                        this.angularSpeed *= 1.04;
+                        this.towerBlocks.push({ hue: Math.floor(280 + Math.random() * 60) });
+                        this.flash = 'hit';
+                        this.flashTimer = 150;
+                    } else {
+                        this.lives--;
+                        this.streak = 0;
+                        this.flash = 'miss';
+                        this.flashTimer = 150;
+                        if (this.lives <= 0) this.running = false;
+                    }
+                },
+                onPointerMove() {},
+                onPointerUp() {},
+
+                render(ctx) {
+                    ctx.clearRect(0, 0, this.w, this.h);
+
+                    ctx.save();
+                    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+                    ctx.lineWidth = 10;
+                    ctx.lineCap = 'round';
+                    ctx.beginPath();
+                    ctx.moveTo(this.center - this.amplitude - 20, this.barY);
+                    ctx.lineTo(this.center + this.amplitude + 20, this.barY);
+                    ctx.stroke();
+
+                    ctx.fillStyle = 'rgba(52,211,153,0.35)';
+                    ctx.fillRect(this.targetStart, this.barY - 10, this.targetWidth, 20);
+
+                    ctx.fillStyle = '#fbbf24';
+                    ctx.beginPath();
+                    ctx.arc(this.markerX, this.barY, 12, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+
+                    const towerX = this.w - 50;
+                    let by = this.h - 40;
+                    this.towerBlocks.forEach(b => {
+                        by -= 22;
+                        ctx.fillStyle = `hsl(${b.hue}, 70%, 60%)`;
+                        ctx.fillRect(towerX - 18, by, 36, 18);
+                    });
+
+                    ctx.font = '20px sans-serif';
+                    ctx.textAlign = 'left';
+                    let hearts = '';
+                    for (let i = 0; i < 3; i++) hearts += i < this.lives ? '❤️' : '🖤';
+                    ctx.fillText(hearts, 16, 40);
+
+                    if (this.flash) {
+                        ctx.fillStyle = this.flash === 'hit' ? 'rgba(52,211,153,0.25)' : 'rgba(239,68,68,0.3)';
+                        ctx.fillRect(0, 0, this.w, this.h);
+                    }
+                }
+            };
+        }
+
+        // --- Oyun 3: Sonsuz Koşu ---
+        function createRunnerGameState(w, h) {
+            const groundY = h * 0.75;
+            return {
+                w, h,
+                score: 0,
+                running: true,
+                lastTs: 0,
+                elapsed: 0,
+                groundY,
+                playerX: w * 0.18,
+                playerY: groundY,
+                velocityY: 0,
+                isAirborne: false,
+                isDucking: false,
+                duckTimer: 0,
+                playerWidth: 30,
+                playerHeight: 44,
+                duckHeight: 24,
+                gravity: 0.0017,
+                jumpVelocity: -0.62,
+                scrollSpeed: 0.25,
+                distance: 0,
+                obstacleBonus: 0,
+                spawnTimer: 0,
+                obstacles: [],
+                pointerDownY: null,
+                pointerDownT: 0,
+
+                spawnObstacle() {
+                    const type = Math.random() < 0.6 ? 'jump' : 'duck';
+                    const width = type === 'jump' ? 24 + Math.random() * 10 : 50 + Math.random() * 20;
+                    const height = type === 'jump' ? 34 + Math.random() * 10 : 28;
+                    this.obstacles.push({ x: this.w + 20, type, width, height, cleared: false });
+                },
+
+                update(dt) {
+                    this.elapsed += dt;
+                    this.scrollSpeed = Math.min(0.55, 0.25 + this.elapsed * 0.0000015);
+
+                    this.velocityY += this.gravity * dt;
+                    this.playerY += this.velocityY * dt;
+                    if (this.playerY >= this.groundY) {
+                        this.playerY = this.groundY;
+                        this.velocityY = 0;
+                        this.isAirborne = false;
+                    } else {
+                        this.isAirborne = true;
+                    }
+
+                    if (this.duckTimer > 0) {
+                        this.duckTimer -= dt;
+                        if (this.duckTimer <= 0) this.isDucking = false;
+                    }
+
+                    this.obstacles.forEach(o => { o.x -= this.scrollSpeed * dt; });
+                    this.obstacles.forEach(o => {
+                        if (!o.cleared && o.x + o.width < this.playerX - this.playerWidth / 2) {
+                            o.cleared = true;
+                            this.obstacleBonus += 5;
+                        }
+                    });
+                    this.obstacles = this.obstacles.filter(o => o.x + o.width > -20);
+
+                    this.spawnTimer += dt;
+                    const minGap = Math.max(650, 1500 - this.scrollSpeed * 1400);
+                    if (this.spawnTimer >= minGap) {
+                        this.spawnTimer = 0;
+                        this.spawnObstacle();
+                    }
+
+                    this.distance += this.scrollSpeed * dt;
+                    this.score = Math.floor(this.distance / 10) + this.obstacleBonus;
+
+                    const pHeight = this.isDucking ? this.duckHeight : this.playerHeight;
+                    const pTop = this.playerY - pHeight;
+                    const pLeft = this.playerX - this.playerWidth / 2;
+                    const pRight = this.playerX + this.playerWidth / 2;
+                    const pBottom = this.playerY;
+
+                    for (const o of this.obstacles) {
+                        let oTop, oBottom;
+                        if (o.type === 'jump') {
+                            oBottom = this.groundY;
+                            oTop = this.groundY - o.height;
+                        } else {
+                            oTop = this.groundY - o.height - 40;
+                            oBottom = oTop + o.height;
+                        }
+                        const overlapX = pRight > o.x && pLeft < o.x + o.width;
+                        const overlapY = pBottom > oTop && pTop < oBottom;
+                        if (overlapX && overlapY) {
+                            this.running = false;
+                            this.deathFlash = true;
+                            break;
+                        }
+                    }
+                },
+
+                onPointerDown(x, y) {
+                    this.pointerDownY = y;
+                    this.pointerDownT = this.elapsed;
+                    if (!this.isAirborne) {
+                        this.velocityY = this.jumpVelocity;
+                        this.isAirborne = true;
+                    }
+                },
+                onPointerMove(x, y) {
+                    if (this.pointerDownY != null && (y - this.pointerDownY) > 30 && (this.elapsed - this.pointerDownT) < 400) {
+                        this.isDucking = true;
+                        this.duckTimer = 500;
+                    }
+                },
+                onPointerUp() { this.pointerDownY = null; },
+
+                render(ctx) {
+                    ctx.clearRect(0, 0, this.w, this.h);
+
+                    ctx.save();
+                    ctx.fillStyle = 'rgba(168,85,247,0.08)';
+                    const hillOffset = (this.distance * 0.2) % 200;
+                    for (let i = -1; i < 4; i++) {
+                        ctx.beginPath();
+                        ctx.ellipse(i * 200 - hillOffset, this.groundY - 10, 140, 60, 0, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                    ctx.restore();
+
+                    ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(0, this.groundY);
+                    ctx.lineTo(this.w, this.groundY);
+                    ctx.stroke();
+
+                    this.obstacles.forEach(o => {
+                        if (o.type === 'jump') {
+                            ctx.fillStyle = '#ef4444';
+                            ctx.beginPath();
+                            ctx.moveTo(o.x, this.groundY);
+                            ctx.lineTo(o.x + o.width / 2, this.groundY - o.height);
+                            ctx.lineTo(o.x + o.width, this.groundY);
+                            ctx.closePath();
+                            ctx.fill();
+                        } else {
+                            ctx.fillStyle = '#3b82f6';
+                            const oTop = this.groundY - o.height - 40;
+                            ctx.fillRect(o.x, oTop, o.width, o.height);
+                        }
+                    });
+
+                    const pHeight = this.isDucking ? this.duckHeight : this.playerHeight;
+                    ctx.save();
+                    ctx.font = `${pHeight}px sans-serif`;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'alphabetic';
+                    ctx.fillText('🏃', this.playerX, this.playerY);
+                    ctx.restore();
+
+                    if (this.deathFlash) {
+                        ctx.fillStyle = 'rgba(239,68,68,0.35)';
+                        ctx.fillRect(0, 0, this.w, this.h);
+                        this.deathFlash = false;
+                    }
+                }
+            };
         }
 
         // Init

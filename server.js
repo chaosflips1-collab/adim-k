@@ -123,7 +123,7 @@ function getTodayStr() {
 async function atomicEnsureDailyReset(userId, today) {
     await User.updateOne(
         { _id: userId, lastStepDate: { $ne: today } },
-        { $set: { todayConvertedSteps: 0, waterGlasses: 0, completedQuests: [], adWatchesToday: 0, gamesPlayedToday: 0, lastStepDate: today } }
+        { $set: { todayConvertedSteps: 0, waterGlasses: 0, completedQuests: [], adWatchesToday: 0, lastStepDate: today } }
     );
 }
 
@@ -133,6 +133,10 @@ async function atomicEnsureDailyReset(userId, today) {
 // yetiyor görünüyor ama reddediliyor" şikayetini engeller, anlamlı bir açık
 // bakiye (overdraft) oluşturmaz.
 const POINTS_EPSILON = 1e-6;
+
+// v2.7: Basit Oyunlar - geçerli oyun kimlikleri (client'ın gönderdiği
+// gameId, /games/start içinde bu listeye karşı doğrulanır).
+const GAME_IDS = ['slice', 'balance', 'runner'];
 
 // Haftanın Pazartesi'sini (UTC) YYYY-MM-DD olarak döndürür - davet ödülü
 // haftalık limitinin (10 kişi/hafta) sıfırlanma noktasını belirler.
@@ -337,7 +341,13 @@ app.get('/api/v2/user/me', authMiddleware, async (req, res) => {
             user.multiplier = lvlData.multiplier;
         }
 
-        res.json({ user, claims, donations, levelInfo: lvlData });
+        // v2.7: her oyun için "bugün ilk temiz oyun ödülü alındı mı" bayrağı -
+        // depolanmıyor, levelInfo gibi okuma anında gameStats'tan türetiliyor.
+        const today = getTodayStr();
+        const gamesClaimedToday = { slice: false, balance: false, runner: false };
+        (user.gameStats || []).forEach(g => { if (g.lastClaimDate === today) gamesClaimedToday[g.gameId] = true; });
+
+        res.json({ user, claims, donations, levelInfo: lvlData, gamesClaimedToday });
     } catch (err) {
         res.status(500).json({ error: "Veri alınamadı." });
     }
@@ -832,51 +842,45 @@ app.post('/api/v2/ads/confirm-double', authMiddleware, async (req, res) => {
 
 // Bug-fix: önceden durationMs tamamen istemciden gelen değere güveniyordu -
 // oyunu hiç oynamadan doğrudan {"durationMs": 180000} POST ederek anında
-// maksimum tier ödülü almak ve 20sn bekleme + günlük 5 limit dahilinde bunu
-// tekrarlamak mümkündü. Şimdi süre, /games/start'ın sunucu-taraflı
+// ödül almak mümkündü. Şimdi süre, /games/start'ın sunucu-taraflı
 // damgaladığı gameSessionStart alanından hesaplanır - istemci artık süreyi
-// BİLDİRMEZ, yalnızca oturumu başlatır/bitirir.
+// BİLDİRMEZ, yalnızca hangi oyunun (gameId) oynanacağını bildirip oturumu
+// başlatır/bitirir.
 app.post('/api/v2/games/start', authMiddleware, async (req, res) => {
     try {
-        await User.updateOne({ _id: req.user.id }, { $set: { gameSessionStart: new Date() } });
+        const { gameId } = req.body;
+        if (!GAME_IDS.includes(gameId)) {
+            return res.status(400).json({ error: "Geçersiz oyun." });
+        }
+        await User.updateOne({ _id: req.user.id }, { $set: { gameSessionStart: new Date(), activeGameId: gameId } });
         res.json({ message: "Oyun oturumu başlatıldı." });
     } catch (err) {
         res.status(500).json({ error: "Oyun başlatma hatası." });
     }
 });
 
-// Basit Oyunlar: ödül, sunucu tarafında /games/start ile damgalanan oturum
-// başlangıcından bu yana geçen GERÇEK süreye göre kademeli verilir (1/2/3
-// dakika -> 0.10/0.20/0.30 YP). Günlük 5 talep sınırı ve talepler arası
-// minimum 20sn bekleme de korunur.
+// Basit Oyunlar (v2.7 3-oyun revizyonu): paylaşımlı gün-içi havuz/kademeli
+// süre ödülü kaldırıldı. Yeni model - her oyun (slice/balance/runner) için
+// GÜNDE BİR kez, en az 1dk sürmüş bir oturumun ardından sabit 0.10 YP
+// "ilk temiz oyun" ödülü verilir; aynı gün içindeki sonraki tamamlamalar
+// ücretsiz pratik sayılır (hata değil, reward: 0 ile başarı döner). Süre
+// hâlâ /games/start'ın sunucu-taraflı damgaladığı gameSessionStart'tan
+// hesaplanır - istemci süreyi bildirmez.
 app.post('/api/v2/games/reward', authMiddleware, async (req, res) => {
     try {
         const userId = req.user.id;
         const today = getTodayStr();
         await atomicEnsureDailyReset(userId, today);
 
-        const preSnapshot = await User.findById(userId).select('gameSessionStart gamesPlayedToday lastGameClaimAt');
+        const preSnapshot = await User.findById(userId).select('gameSessionStart activeGameId gameStats');
         if (!preSnapshot) return res.status(404).json({ error: "Kullanıcı bulunamadı." });
 
-        if (!preSnapshot.gameSessionStart) {
+        if (!preSnapshot.gameSessionStart || !preSnapshot.activeGameId) {
             return res.status(400).json({ error: "Aktif bir oyun oturumu bulunamadı. Lütfen oyunu tekrar başlatın." });
         }
 
-        const MAX_GAME_CLAIMS_PER_DAY = 5;
-        if ((preSnapshot.gamesPlayedToday || 0) >= MAX_GAME_CLAIMS_PER_DAY) {
-            return res.status(400).json({ error: `Bugünkü oyun ödülü hakkınızı (${MAX_GAME_CLAIMS_PER_DAY}) kullandınız!` });
-        }
-        if (preSnapshot.lastGameClaimAt && (Date.now() - new Date(preSnapshot.lastGameClaimAt).getTime()) < 20000) {
-            return res.status(400).json({ error: "Çok hızlı art arda oyun ödülü talep edildi, birkaç saniye bekleyin." });
-        }
-
         const durationMs = Date.now() - new Date(preSnapshot.gameSessionStart).getTime();
-
-        let reward = 0;
-        if (durationMs >= 180000) reward = 0.30;
-        else if (durationMs >= 120000) reward = 0.20;
-        else if (durationMs >= 60000) reward = 0.10;
-        else {
+        if (durationMs < 60000) {
             // Süre henüz yetersiz - oturumu BOZMADAN reddet. Süre her zaman
             // gameSessionStart'tan gerçek zamana göre hesaplandığı için erken
             // bir talebi reddetmek hiçbir güvenlik açığı doğurmaz (istemci art
@@ -887,38 +891,65 @@ app.post('/api/v2/games/reward', authMiddleware, async (req, res) => {
             return res.status(400).json({ error: "Ödül kazanmak için en az 1 dakika oynamalısınız." });
         }
 
-        // Bug-fix (yarış durumu + oturum tekrar kullanımı): gameSessionStart,
-        // preSnapshot'ta okunan DEĞERLE eşleşiyorsa güncellenir ve AYNI atomik
-        // işlemde null'a çekilir - bu hem "lost update"i önler hem de aynı
-        // oyun oturumunun iki kez ödül için talep edilmesini imkansız kılar
-        // (ikinci istek geldiğinde gameSessionStart artık null'dır, koşul
-        // eşleşmez).
-        const updated = await User.findOneAndUpdate(
-            {
-                _id: userId,
-                gameSessionStart: preSnapshot.gameSessionStart,
-                gamesPlayedToday: { $lt: MAX_GAME_CLAIMS_PER_DAY }
-            },
-            [{ $set: {
-                gamesPlayedToday: { $add: [{ $ifNull: ['$gamesPlayedToday', 0] }, 1] },
-                points: { $round: [{ $add: ['$points', reward] }, 2] },
-                lastGameClaimAt: new Date(),
-                gameSessionStart: null
-            } }],
-            { new: true, updatePipeline: true }
-        ).select('-password');
+        const gameId = preSnapshot.activeGameId;
+        const entry = (preSnapshot.gameStats || []).find(g => g.gameId === gameId);
+        const alreadyClaimedToday = !!entry && entry.lastClaimDate === today;
+
+        if (alreadyClaimedToday) {
+            // Bugünkü ödül zaten alınmış - hata değil, serbest pratik. Yalnızca
+            // oturumu, preSnapshot'ta okunan DEĞERLE eşleşme koşuluyla atomik
+            // olarak temizler (lost-update/tekrar-talep önleme, aşağıdaki ödül
+            // dalıyla aynı idiom).
+            const updated = await User.findOneAndUpdate(
+                { _id: userId, gameSessionStart: preSnapshot.gameSessionStart, activeGameId: gameId },
+                { $set: { gameSessionStart: null, activeGameId: null } },
+                { new: true }
+            ).select('-password');
+            if (!updated) return res.status(400).json({ error: "Oturum bulunamadı, lütfen tekrar deneyin." });
+            return res.json({ reward: 0, alreadyClaimedToday: true, message: "Bugünkü ödülünü zaten aldın, pratik yapmaya devam edebilirsin!", user: updated });
+        }
+
+        // Bug-fix (yarış durumu + oturum tekrar kullanımı): gameSessionStart VE
+        // activeGameId, preSnapshot'ta okunan DEĞERLERLE eşleşiyorsa güncellenir
+        // ve AYNI atomik işlemde null'a çekilir - bu hem "lost update"i önler
+        // hem de aynı oyun oturumunun iki kez ödül için talep edilmesini
+        // imkansız kılar (ikinci istek geldiğinde gameSessionStart/activeGameId
+        // artık null'dır, koşul eşleşmez). arrayFilters yerine pipeline-form
+        // $map/$concatArrays kullanılıyor çünkü arrayFilters pipeline-form
+        // update'lerle birlikte desteklenmiyor.
+        const updated = entry
+            ? await User.findOneAndUpdate(
+                { _id: userId, gameSessionStart: preSnapshot.gameSessionStart, activeGameId: gameId },
+                [{ $set: {
+                    points: { $round: [{ $add: ['$points', 0.10] }, 2] },
+                    gameSessionStart: null,
+                    activeGameId: null,
+                    gameStats: {
+                        $map: {
+                            input: '$gameStats',
+                            as: 'g',
+                            in: { $cond: [{ $eq: ['$$g.gameId', gameId] }, { gameId: gameId, lastClaimDate: today }, '$$g'] }
+                        }
+                    }
+                } }],
+                { new: true, updatePipeline: true }
+            ).select('-password')
+            : await User.findOneAndUpdate(
+                { _id: userId, gameSessionStart: preSnapshot.gameSessionStart, activeGameId: gameId },
+                [{ $set: {
+                    points: { $round: [{ $add: ['$points', 0.10] }, 2] },
+                    gameSessionStart: null,
+                    activeGameId: null,
+                    gameStats: { $concatArrays: [{ $ifNull: ['$gameStats', []] }, [{ gameId: gameId, lastClaimDate: today }]] }
+                } }],
+                { new: true, updatePipeline: true }
+            ).select('-password');
 
         if (!updated) {
             return res.status(400).json({ error: "Oyun ödülü alınamadı, lütfen tekrar deneyin." });
         }
 
-        res.json({
-            message: `🎮 Oyun tamamlandı! +${reward} YürüPara kazandınız. (${updated.gamesPlayedToday}/${MAX_GAME_CLAIMS_PER_DAY})`,
-            reward,
-            gamesPlayedToday: updated.gamesPlayedToday,
-            maxGameClaimsPerDay: MAX_GAME_CLAIMS_PER_DAY,
-            user: updated
-        });
+        res.json({ reward: 0.10, alreadyClaimedToday: false, message: "🎮 İlk temiz oyunun bugün! +0.10 YürüPara kazandın.", user: updated });
     } catch (err) {
         res.status(500).json({ error: "Oyun ödülü hatası." });
     }

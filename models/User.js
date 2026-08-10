@@ -49,9 +49,11 @@ const UserSchema = new mongoose.Schema({
     // v2.7: Reklam İzle Kazan (günlük sıfırlanır, bkz. ensureDailyReset)
     adWatchesToday: { type: Number, default: 0 },
 
-    // v2.7: Basit Oyunlar (günlük sıfırlanır, bkz. ensureDailyReset)
-    gamesPlayedToday: { type: Number, default: 0 },
-    lastGameClaimAt: { type: Date, default: null },
+    // v2.7: Basit Oyunlar - her oyun için ayrı günlük ilk-temiz-oyun ödülü
+    // takibi (lastClaimDate, getTodayStr() ile aynı 'YYYY-MM-DD' formatında -
+    // bugünle karşılaştırılarak türetilir, ayrı bir sıfırlama mantığı gerekmez).
+    gameStats: [{ gameId: String, lastClaimDate: { type: String, default: '' } }],
+    activeGameId: { type: String, default: null },
 
     // v2.7: Kayıt sonrası izin/veri koruma sözleşmesi onayı
     privacyAccepted: { type: Boolean, default: false },
