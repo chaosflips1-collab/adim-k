@@ -767,12 +767,25 @@
                 let count = 5;
                 adTimer.textContent = count;
 
-                const timer = setInterval(() => {
+                const timer = setInterval(async () => {
                     count--;
                     adTimer.textContent = count;
                     if (count <= 0) {
                         clearInterval(timer);
                         adModal.classList.add('hidden');
+                        // Bug-fix: isDouble artık istemciden gelen çıplak bir
+                        // bayrağa güvenilerek sunucuya gönderilmiyor (bu, reklamı
+                        // hiç izlemeden doğrudan API'ye {isDouble:true} göndererek
+                        // sınırsız ücretsiz 2x bonus almayı mümkün kılıyordu).
+                        // Simüle reklam akışı tamamlandığında sunucuda kısa ömürlü
+                        // (60sn) bir onay bayrağı set edilir; /steps/convert bu
+                        // bayrağı atomik olarak tüketir.
+                        try {
+                            await fetch('/api/v2/ads/confirm-double', {
+                                method: 'POST',
+                                headers: { 'Authorization': `Bearer ${token}` }
+                            });
+                        } catch (e) {}
                         executeStepConversion(true);
                     }
                 }, 1000);
@@ -1536,6 +1549,16 @@
             document.getElementById('gameStartBtn').classList.add('hidden');
             document.getElementById('gameEndBtn').classList.remove('hidden');
 
+            // Bug-fix: sunucu tarafında oyun oturumunun GERÇEK başlangıç
+            // zamanını damgalar (gameSessionStart). /games/reward artık
+            // istemcinin bildirdiği süreye güvenmiyor, süreyi bu damgadan
+            // hesaplıyor - oyunu hiç oynamadan doğrudan API'ye büyük bir
+            // durationMs göndererek anında maksimum ödül alınamaz.
+            fetch('/api/v2/games/start', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
+            }).catch(() => {});
+
             clearInterval(gameTimerInterval);
             gameTimerInterval = setInterval(updateGameTimerDisplay, 250);
             updateGameTimerDisplay();
@@ -1562,16 +1585,17 @@
         }
 
         async function endGame() {
-            const durationMs = Date.now() - gameStartTime;
             stopGameLogic();
             document.getElementById('gameStartBtn').classList.remove('hidden');
             document.getElementById('gameEndBtn').classList.add('hidden');
 
             try {
+                // Bug-fix: durationMs artık gönderilmiyor - sunucu süreyi
+                // kendi damgaladığı gameSessionStart'tan hesaplıyor (bkz.
+                // startGame() ve server.js /api/v2/games/reward).
                 const res = await fetch('/api/v2/games/reward', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                    body: JSON.stringify({ durationMs })
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
                 });
                 const data = await res.json();
                 showAlert(data.message || data.error);

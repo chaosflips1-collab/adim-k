@@ -55,7 +55,22 @@ const UserSchema = new mongoose.Schema({
 
     // v2.7: Kayıt sonrası izin/veri koruma sözleşmesi onayı
     privacyAccepted: { type: Boolean, default: false },
-    privacyAcceptedAt: { type: Date, default: null }
+    privacyAcceptedAt: { type: Date, default: null },
+
+    // Bug-fix (bkz. server.js /api/v2/steps/convert, /api/v2/ads/confirm-double):
+    // istemcinin gönderdiği isDouble bayrağına asla doğrudan güvenilmez. 5sn'lik
+    // simüle reklam akışı tamamlandığında sunucu bu bayrağı kısa ömürlü (60sn)
+    // olarak işaretler; /steps/convert bunu atomik "oku ve temizle" ile
+    // tüketir. İşaretlenip biriktirilerek stoklanmasını önlemek için süresi
+    // pendingDoubleBoostAt + 60sn'den sonra geçersiz sayılır.
+    pendingDoubleBoost: { type: Boolean, default: false },
+    pendingDoubleBoostAt: { type: Date, default: null },
+
+    // Bug-fix (bkz. server.js /api/v2/games/start, /api/v2/games/reward):
+    // istemcinin bildirdiği durationMs artık güvenilmez; oyun süresi bu
+    // sunucu-taraflı zaman damgasından hesaplanır ve ödül talebinde atomik
+    // olarak temizlenir (aynı oturumun iki kez talep edilmesini engeller).
+    gameSessionStart: { type: Date, default: null }
 });
 
 module.exports = mongoose.model('User', UserSchema);

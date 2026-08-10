@@ -112,23 +112,27 @@ function getTodayStr() {
     return new Date().toISOString().split('T')[0];
 }
 
-// Günlük sıfırlama kontrolü tek bir yerde: önceden bu mantık sadece
-// /api/v2/steps/add içindeydi, bu yüzden bir kullanıcı yeni bir günde önce su
-// takibi veya görev tamamlama gibi başka bir uç noktayı çağırırsa
-// waterGlasses/completedQuests hiç sıfırlanmadan bir önceki günden kalıyor ve
-// o gün için görev/su bonusu kalıcı olarak engelleniyordu.
-function ensureDailyReset(user) {
-    const today = getTodayStr();
-    if (user.lastStepDate !== today) {
-        user.todayConvertedSteps = 0;
-        user.waterGlasses = 0;
-        user.completedQuests = [];
-        user.adWatchesToday = 0;
-        user.gamesPlayedToday = 0;
-        user.lastStepDate = today;
-    }
-    return today;
+// Günlük sıfırlama kontrolü tek bir yerde ve ATOMİK: önceden bu, User
+// dokümanını okuyup JS'de mutasyona uğratıp save() ile tam doküman olarak geri
+// yazan bir yardımcıydı (bkz. git geçmişi) - eşzamanlı iki istek aynı anda bu
+// sıfırlamayı yaparsa "lost update" ile birinin yazdığı diğer alanlar
+// (points, adWatchesToday vb.) kaybolabiliyordu. Artık koşullu bir
+// updateOne: yalnızca lastStepDate bugünden farklıysa uygulanır: eşzamanlı
+// çağrılardan ilki alanları sıfırlayıp lastStepDate'i bugüne çeker, aynı anda
+// gelen diğerleri artık koşula uymadığı için no-op olur - yarış durumu yok.
+async function atomicEnsureDailyReset(userId, today) {
+    await User.updateOne(
+        { _id: userId, lastStepDate: { $ne: today } },
+        { $set: { todayConvertedSteps: 0, waterGlasses: 0, completedQuests: [], adWatchesToday: 0, gamesPlayedToday: 0, lastStepDate: today } }
+    );
 }
+
+// Bakiye harcayan atomik güncellemelerde IEEE754 float birikim gürültüsüne
+// (ör. depolanan puanın matematiksel olarak 5.00 olması gerekirken
+// 4.999999999999999 olarak saklanması) karşı küçük bir tolerans - "bakiyem
+// yetiyor görünüyor ama reddediliyor" şikayetini engeller, anlamlı bir açık
+// bakiye (overdraft) oluşturmaz.
+const POINTS_EPSILON = 1e-6;
 
 // Haftanın Pazartesi'sini (UTC) YYYY-MM-DD olarak döndürür - davet ödülü
 // haftalık limitinin (10 kişi/hafta) sıfırlanma noktasını belirler.
@@ -216,15 +220,31 @@ app.post('/api/v2/login', async (req, res) => {
         if (!isMatch) return res.status(400).json({ error: "E-posta veya şifre hatalı!" });
 
         const today = getTodayStr();
+        let responseUser = user;
         if (user.lastStreakDate !== today) {
             const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-            user.streak = (user.lastStreakDate === yesterday) ? user.streak + 1 : 1;
-            user.lastStreakDate = today;
-            await user.save();
+            const newStreak = (user.lastStreakDate === yesterday) ? user.streak + 1 : 1;
+
+            // Bug-fix (yarış durumu): "bugün streak zaten güncellendi mi"
+            // kontrolü ve streak/tarih güncellemesi tek atomik işlemde;
+            // lastStreakDate != today koşulu sağlanmazsa (ör. eşzamanlı bir
+            // adım senkronu veya ikinci giriş isteği zaten güncellemiş) null
+            // döner - günde birden fazla artış olmaz. newStreak, bu bloğun
+            // başında okunan tek bir snapshot'tan (user.streak/lastStreakDate)
+            // hesaplanır.
+            const updated = await User.findOneAndUpdate(
+                { _id: user._id, lastStreakDate: { $ne: today } },
+                { $set: { streak: newStreak, lastStreakDate: today } },
+                { new: true }
+            ).select('-password');
+
+            // Koşul sağlanmadıysa (yarış kaybedildi) güncel veriyi tekrar
+            // oku ki cevapta bayat streak/lastStreakDate dönmeyelim.
+            responseUser = updated || await User.findById(user._id).select('-password');
         }
 
         const token = jwt.sign({ id: user._id, email: user.email, name: user.name, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
-        const userSafe = user.toObject();
+        const userSafe = responseUser.toObject();
         delete userSafe.password;
         res.json({ message: "Giriş başarılı!", token, user: userSafe });
     } catch (err) {
@@ -299,10 +319,23 @@ app.get('/api/v2/user/me', authMiddleware, async (req, res) => {
         const claims = await Claim.find({ userId: user._id }).sort({ claimedAt: -1 });
         const donations = await Donation.find({ userId: user._id }).sort({ donatedAt: -1 });
 
+        // Bug-fix: bu salt-okunur uç nokta artık KOŞULSUZ save() ÇAĞIRMIYOR.
+        // steps/add ve steps/convert her adım/dönüştürme sonrası level/multiplier'ı
+        // zaten kendi atomik güncellemeleri içinde persist ediyor. Önceden bu
+        // route her çağrıda tüm dokümanı save() ile geri yazıyordu; dashboard.html
+        // bunu neredeyse her kullanıcı eylemi sonrası çağırdığı ve pedometer da
+        // 5sn'de bir arka planda senkronize ettiği için, buradaki bayat
+        // in-memory kopya başka bir uç noktanın az önce yazdığı taze
+        // points/adWatchesToday/vb. değerlerini sessizce eski haline
+        // döndürebiliyordu (gerçek ilerleme kaybı, normal kullanımda bile).
+        // Sadece DB'deki level/multiplier GERÇEKTEN bayatsa, yalnızca bu iki
+        // türetilmiş alanı atomik olarak düzeltiriz.
         const lvlData = calculateLevel(user.steps);
-        user.level = lvlData.level;
-        user.multiplier = lvlData.multiplier;
-        await user.save();
+        if (user.level !== lvlData.level || user.multiplier !== lvlData.multiplier) {
+            await User.updateOne({ _id: user._id }, { $set: { level: lvlData.level, multiplier: lvlData.multiplier } });
+            user.level = lvlData.level;
+            user.multiplier = lvlData.multiplier;
+        }
 
         res.json({ user, claims, donations, levelInfo: lvlData });
     } catch (err) {
@@ -320,25 +353,41 @@ app.post('/api/v2/steps/add', authMiddleware, async (req, res) => {
         if (!Number.isFinite(amount) || amount <= 0 || amount > 2000) {
             return res.status(400).json({ error: "Geçersiz adım miktarı." });
         }
-        const user = await User.findById(req.user.id).select('-password');
-        ensureDailyReset(user);
+        const userId = req.user.id;
+        const today = getTodayStr();
+        await atomicEnsureDailyReset(userId, today);
 
-        user.steps += amount;
-        user.unconvertedSteps += amount;
+        // weight nadiren değişir ve kalori hesaplaması için sadece hafif bir
+        // katsayı olarak kullanılır (bakiye/puan gibi yarış-kritik bir alan
+        // değildir) - ayrı, tek alanlık bir okuma burada güvenlidir.
+        const weightDoc = await User.findById(userId).select('weight');
+        if (!weightDoc) return res.status(404).json({ error: "Kullanıcı bulunamadı." });
+        const calFactorPerStep = (weightDoc.weight || 70) * 0.00057;
+        const burnedCaloriesDelta = Math.round(amount * calFactorPerStep * 10) / 10;
 
-        const userWeight = user.weight || 70;
-        const calFactorPerStep = userWeight * 0.00057;
-        const burnedCalories = amount * calFactorPerStep;
-        // Aynı ondalık birikim hatası (bkz. points) burada da oluşabilir; her
-        // eklemeden sonra yuvarlıyoruz.
-        user.calories = Math.round((user.calories + burnedCalories) * 10) / 10;
+        // Asıl yarış durumu düzeltmesi: steps/unconvertedSteps/calories artık
+        // atomik $inc ile uygulanıyor (önceden findById -> JS'de mutasyon ->
+        // save() ile tam doküman üzerine yazılıyordu; eşzamanlı N istek aynı
+        // bayat anlık görüntüden okuyup üzerine yazdığı için adımların çoğu
+        // kayboluyordu - "lost update").
+        const updated = await User.findOneAndUpdate(
+            { _id: userId },
+            { $inc: { steps: amount, unconvertedSteps: amount, calories: burnedCaloriesDelta } },
+            { new: true }
+        ).select('-password');
+        if (!updated) return res.status(404).json({ error: "Kullanıcı bulunamadı." });
 
-        const lvlData = calculateLevel(user.steps);
-        user.level = lvlData.level;
-        user.multiplier = lvlData.multiplier;
+        // level/multiplier tamamen $inc'in döndürdüğü GERÇEK (atomik olarak
+        // güncellenmiş) steps değerinden türetilir, bu yüzden burada da bir
+        // yarış durumu oluşmaz.
+        const lvlData = calculateLevel(updated.steps);
+        if (updated.level !== lvlData.level || updated.multiplier !== lvlData.multiplier) {
+            await User.updateOne({ _id: userId }, { $set: { level: lvlData.level, multiplier: lvlData.multiplier } });
+            updated.level = lvlData.level;
+            updated.multiplier = lvlData.multiplier;
+        }
 
-        await user.save();
-        res.json({ message: `${amount} adım senkronize edildi!`, user });
+        res.json({ message: `${amount} adım senkronize edildi!`, user: updated });
     } catch (err) {
         res.status(500).json({ error: "Adım ekleme hatası." });
     }
@@ -347,12 +396,29 @@ app.post('/api/v2/steps/add', authMiddleware, async (req, res) => {
 app.post('/api/v2/user/update-body', authMiddleware, async (req, res) => {
     try {
         const { height, weight } = req.body;
-        const user = await User.findById(req.user.id).select('-password');
+        const updates = {};
 
-        if (height) user.height = parseInt(height);
-        if (weight) user.weight = parseInt(weight);
+        // Bug-fix: aralık doğrulaması yoktu - height=1, weight=999999 gibi
+        // gerçekçi olmayan değerler sessizce kaydedilip kalori yakımı, BMI ve
+        // diyet planı hesaplamalarını (bkz. /api/v2/diet/get-plan) alt tarafta
+        // bozuyordu. Makul insan aralıklarıyla sınırlandırılır.
+        if (height !== undefined && height !== null && height !== '') {
+            const h = parseInt(height);
+            if (!Number.isFinite(h) || h < 100 || h > 250) {
+                return res.status(400).json({ error: "Geçersiz boy değeri (100-250 cm arasında olmalıdır)." });
+            }
+            updates.height = h;
+        }
+        if (weight !== undefined && weight !== null && weight !== '') {
+            const w = parseInt(weight);
+            if (!Number.isFinite(w) || w < 20 || w > 300) {
+                return res.status(400).json({ error: "Geçersiz kilo değeri (20-300 kg arasında olmalıdır)." });
+            }
+            updates.weight = w;
+        }
 
-        await user.save();
+        const user = await User.findByIdAndUpdate(req.user.id, { $set: updates }, { new: true }).select('-password');
+        if (!user) return res.status(404).json({ error: "Kullanıcı bulunamadı." });
         res.json({ message: `Vücut ölçüleriniz güncellendi! (${user.height} cm, ${user.weight} kg)`, user });
     } catch (err) {
         res.status(500).json({ error: "Ölçü güncelleme hatası." });
@@ -390,60 +456,138 @@ app.get('/api/v2/diet/get-plan', authMiddleware, async (req, res) => {
 // Adımları YürüPara'ya Çevir
 app.post('/api/v2/steps/convert', authMiddleware, async (req, res) => {
     try {
-        const isDouble = req.body.isDouble === true;
-        const user = await User.findById(req.user.id).select('-password');
-        ensureDailyReset(user);
+        const requestedDouble = req.body.isDouble === true;
+        const userId = req.user.id;
+        const today = getTodayStr();
+        await atomicEnsureDailyReset(userId, today);
 
         const DAILY_MAX_CAP = 15000;
-        if (user.todayConvertedSteps >= DAILY_MAX_CAP) {
-            // capReached: istemci bu bayrağı görünce Premium paywall ekranını açar.
-            return res.status(400).json({ error: "Günlük maksimum 15.000 adım dönüştürme limitine ulaştınız!", capReached: true });
+
+        // Bug-fix (yarış durumu): dönüştürülecek miktar mevcut bakiyeye bağlı
+        // olduğu için (sabit bir $inc değil) tek bir kör atomik komutla ifade
+        // edilemez. Bunun yerine iyimser eşzamanlılık kontrolü (compare-and-swap)
+        // kullanılır: bir anlık görüntü okunur, o anki değerlere göre değişiklik
+        // hesaplanır, ardından güncelleme yalnızca okunan değerler HÂLÂ aynıysa
+        // uygulanır (findOneAndUpdate'in sorgu koşulu). Aradan başka bir istek
+        // aynı alanları değiştirmişse koşul eşleşmez (null döner) ve taze bir
+        // anlık görüntüyle yeniden denenir - "lost update" oluşamaz.
+        let updated = null;
+        let convertAmount = 0;
+        let earnedPoints = 0;
+        let usedDouble = false;
+
+        for (let attempt = 0; attempt < 5 && !updated; attempt++) {
+            const snapshot = await User.findById(userId).select('-password');
+            if (!snapshot) return res.status(404).json({ error: "Kullanıcı bulunamadı." });
+
+            if (snapshot.todayConvertedSteps >= DAILY_MAX_CAP) {
+                // capReached: istemci bu bayrağı görünce Premium paywall ekranını açar.
+                return res.status(400).json({ error: "Günlük maksimum 15.000 adım dönüştürme limitine ulaştınız!", capReached: true });
+            }
+
+            const availableToConvert = Math.min(snapshot.unconvertedSteps, DAILY_MAX_CAP - snapshot.todayConvertedSteps);
+            if (availableToConvert < 1000) {
+                return res.status(400).json({ error: "Dönüştürmek için en az 1.000 birikmiş adımınız olmalıdır." });
+            }
+
+            convertAmount = Math.floor(availableToConvert / 1000) * 1000;
+            const lvlData = calculateLevel(snapshot.steps);
+
+            // Bug-fix: isDouble istemciden gelen bir bayraktan doğrudan
+            // güvenilmiyor. Yalnızca /api/v2/ads/confirm-double tarafından
+            // atomik olarak set edilmiş, 60sn içinde ve HENÜZ tüketilmemiş
+            // pendingDoubleBoost varsa 2x uygulanır; koşul aşağıdaki
+            // findOneAndUpdate'in match kısmına dahil edilerek AYNI atomik
+            // işlemde tüketilir (ayrı bir "oku sonra temizle" adımı YOK, aksi
+            // halde CAS başarısız olup yeniden denendiğinde bonus zaten
+            // tüketilmiş ama harcanmamış olabilirdi).
+            const boostCandidate = requestedDouble
+                && snapshot.pendingDoubleBoost
+                && snapshot.pendingDoubleBoostAt
+                && (Date.now() - new Date(snapshot.pendingDoubleBoostAt).getTime() < 60000);
+
+            let pointsDelta = (convertAmount / 1000) * 0.10 * lvlData.multiplier;
+            if (boostCandidate) pointsDelta *= 2;
+            pointsDelta = Math.round(pointsDelta * 100) / 100;
+
+            const matchCond = {
+                _id: userId,
+                unconvertedSteps: snapshot.unconvertedSteps,
+                todayConvertedSteps: snapshot.todayConvertedSteps,
+                points: snapshot.points
+            };
+            const setOps = {
+                unconvertedSteps: snapshot.unconvertedSteps - convertAmount,
+                todayConvertedSteps: snapshot.todayConvertedSteps + convertAmount,
+                points: Math.round((snapshot.points + pointsDelta) * 100) / 100,
+                level: lvlData.level,
+                multiplier: lvlData.multiplier
+            };
+            if (boostCandidate) {
+                matchCond.pendingDoubleBoost = true;
+                setOps.pendingDoubleBoost = false;
+                setOps.pendingDoubleBoostAt = null;
+            }
+
+            const result = await User.findOneAndUpdate(matchCond, { $set: setOps }, { new: true }).select('-password');
+            if (result) {
+                updated = result;
+                earnedPoints = pointsDelta;
+                usedDouble = boostCandidate;
+            }
         }
 
-        const availableToConvert = Math.min(user.unconvertedSteps, DAILY_MAX_CAP - user.todayConvertedSteps);
-        if (availableToConvert < 1000) {
-            return res.status(400).json({ error: "Dönüştürmek için en az 1.000 birikmiş adımınız olmalıdır." });
+        if (!updated) {
+            return res.status(409).json({ error: "Çok yoğun eşzamanlı istek, lütfen tekrar deneyin." });
         }
-
-        const convertAmount = Math.floor(availableToConvert / 1000) * 1000;
-        const lvlData = calculateLevel(user.steps);
-        
-        let earnedPoints = (convertAmount / 1000) * 0.10 * lvlData.multiplier;
-        if (isDouble) earnedPoints *= 2;
-
-        user.unconvertedSteps -= convertAmount;
-        user.todayConvertedSteps += convertAmount;
-        user.points = Math.round((user.points + earnedPoints) * 100) / 100;
-        user.level = lvlData.level;
-        user.multiplier = lvlData.multiplier;
-
-        await user.save();
 
         // Davet Et Kazan: davet edilen kişi İLK kez adım dönüştürdüğünde (sadece
         // kayıt olmak yetmez - sahte hesaplarla anlık ödül toplamayı engeller)
         // daveti getiren kişiye tek seferlik 10 YP verilir, haftada en fazla 10 kişi.
-        if (!user.referralRewardGiven && user.referredBy) {
-            const referrer = await User.findById(user.referredBy);
-            if (referrer) {
+        //
+        // Bug-fix (yarış durumu): referralRewardGiven'ın "okunup sonra
+        // yazılması" ve referrer'ın haftalık sayaç kontrolü/artırımı da
+        // atomik değildi - davet edilenin dönüştürme işlemiyle eşzamanlı
+        // ikinci bir istek referreri iki kez ödüllendirebiliyor veya
+        // 10/hafta limitini zamanlama ile aşabiliyordu.
+        if (!updated.referralRewardGiven && updated.referredBy) {
+            // "Tam olarak bir kez" garantisi: bu koşullu güncelleme yalnızca
+            // referralRewardGiven HÂLÂ false ise uygulanır - eşzamanlı ikinci
+            // bir dönüştürme isteği burada eşleşmez, referrer'a asla iki kez
+            // ödül verilmez.
+            const marked = await User.findOneAndUpdate(
+                { _id: updated._id, referralRewardGiven: false },
+                { $set: { referralRewardGiven: true } }
+            );
+            updated.referralRewardGiven = true;
+
+            if (marked) {
                 const weekStart = getWeekStartStr();
-                if (referrer.referralWeekStart !== weekStart) {
-                    referrer.referralWeekStart = weekStart;
-                    referrer.referralWeekCount = 0;
+                // Aynı hafta içinde ve limit altındaysa atomik artır.
+                let referrerUpdated = await User.findOneAndUpdate(
+                    { _id: updated.referredBy, referralWeekStart: weekStart, referralWeekCount: { $lt: 10 } },
+                    { $inc: { points: 10, referralWeekCount: 1 } }
+                );
+                if (!referrerUpdated) {
+                    // Hafta henüz bu referrer için başlamamış (rollover) olabilir -
+                    // bu durumu ayrı, yine atomik bir koşulla ele al.
+                    referrerUpdated = await User.findOneAndUpdate(
+                        { _id: updated.referredBy, referralWeekStart: { $ne: weekStart } },
+                        { $set: { referralWeekStart: weekStart, referralWeekCount: 1 }, $inc: { points: 10 } }
+                    );
                 }
-                if (referrer.referralWeekCount < 10) {
-                    referrer.points = Math.round((referrer.points + 10) * 100) / 100;
-                    referrer.referralWeekCount += 1;
-                    await referrer.save();
-                }
+                // referrerUpdated hâlâ null ise: bu hafta için referrer'ın
+                // 10/hafta limiti zaten dolu - referralRewardGiven yine de
+                // true kalır (davet edilen kişi için "tam olarak bir kez"
+                // garantisi korunur), sadece referrer ödül almaz.
             }
-            user.referralRewardGiven = true;
-            await user.save();
         }
 
         res.json({
-            message: `🎉 ${convertAmount.toLocaleString('tr-TR')} adım dönüştürüldü! (+${(Math.round(earnedPoints * 100) / 100)} YürüPara)`,
+            message: `🎉 ${convertAmount.toLocaleString('tr-TR')} adım dönüştürüldü! (+${earnedPoints} YürüPara)`,
             earnedPoints,
-            user
+            usedDouble,
+            user: updated
         });
     } catch (err) {
         res.status(500).json({ error: "Dönüştürme hatası." });
@@ -453,18 +597,49 @@ app.post('/api/v2/steps/convert', authMiddleware, async (req, res) => {
 // SU TAKİBİ
 app.post('/api/v2/health/water', authMiddleware, async (req, res) => {
     try {
-        const user = await User.findById(req.user.id).select('-password');
-        ensureDailyReset(user);
-        user.waterGlasses = Math.min((user.waterGlasses || 0) + 1, 8);
+        const userId = req.user.id;
+        const today = getTodayStr();
+        await atomicEnsureDailyReset(userId, today);
 
-        let bonusMsg = `💧 1 Bardak Su İçildi! (${user.waterGlasses}/8 Bardak)`;
-        if (user.waterGlasses === 8 && !user.completedQuests.includes('water')) {
-            user.completedQuests.push('water');
-            user.points = Math.round((user.points + 0.15) * 100) / 100;
-            bonusMsg = "🎉 Tebrikler! Günlük 2 Litre Su Hedefine ulaştınız ve +0.15 YürüPara kazandınız!";
+        // Bug-fix (yarış durumu): bardak sayısı artık atomik olarak, yalnızca
+        // 8'in altındaysa artırılır. Zaten 8/8 ise (Math.min ile önceki
+        // davranış da 8'i aşmıyordu) hiçbir şey değiştirmeden mevcut durumu
+        // döndürürüz - hata değil, önceki davranışla tutarlı.
+        let user = await User.findOneAndUpdate(
+            { _id: userId, waterGlasses: { $lt: 8 } },
+            { $inc: { waterGlasses: 1 } },
+            { new: true }
+        ).select('-password');
+
+        if (!user) {
+            user = await User.findById(userId).select('-password');
+            if (!user) return res.status(404).json({ error: "Kullanıcı bulunamadı." });
+            return res.json({ message: `💧 Günlük 8/8 bardak hedefine zaten ulaştınız!`, waterGlasses: user.waterGlasses, points: user.points });
         }
 
-        await user.save();
+        let bonusMsg = `💧 1 Bardak Su İçildi! (${user.waterGlasses}/8 Bardak)`;
+        if (user.waterGlasses === 8) {
+            // Bonus da atomik olarak ve sadece 'water' HENÜZ completedQuests
+            // içinde değilse verilir - eşzamanlı iki isteğin 8. bardakta aynı
+            // anda tetiklenip bonusu iki kez vermesini engeller. Yuvarlama da
+            // (pipeline update / $round) AYNI atomik işlemde yapılır - ayrı bir
+            // "sonradan yuvarla ve $set ile geri yaz" adımı kasıtlı olarak
+            // kullanılmadı, çünkü o da eşzamanlı başka bir puan artışını
+            // (ör. ads/watch) üzerine yazıp kaybettirebilirdi.
+            const rewarded = await User.findOneAndUpdate(
+                { _id: userId, completedQuests: { $ne: 'water' } },
+                [{ $set: {
+                    completedQuests: { $concatArrays: ['$completedQuests', ['water']] },
+                    points: { $round: [{ $add: ['$points', 0.15] }, 2] }
+                } }],
+                { new: true, updatePipeline: true }
+            ).select('-password');
+            if (rewarded) {
+                user = rewarded;
+                bonusMsg = "🎉 Tebrikler! Günlük 2 Litre Su Hedefine ulaştınız ve +0.15 YürüPara kazandınız!";
+            }
+        }
+
         res.json({ message: bonusMsg, waterGlasses: user.waterGlasses, points: user.points });
     } catch (err) {
         res.status(500).json({ error: "Su takibi hatası." });
@@ -475,16 +650,12 @@ app.post('/api/v2/health/water', authMiddleware, async (req, res) => {
 app.post('/api/v2/health/quest', authMiddleware, async (req, res) => {
     try {
         const { questType } = req.body;
-        const user = await User.findById(req.user.id).select('-password');
-        ensureDailyReset(user);
-
-        if (user.completedQuests.includes(questType)) {
-            return res.status(400).json({ error: "Bu görevi bugün zaten tamamladınız!" });
-        }
+        const userId = req.user.id;
+        const today = getTodayStr();
+        await atomicEnsureDailyReset(userId, today);
 
         let rewardPoints = 0;
         let title = '';
-
         if (questType === 'sleep') {
             rewardPoints = 0.10;
             title = '8 Saat Uyu Görevi';
@@ -495,10 +666,22 @@ app.post('/api/v2/health/quest', authMiddleware, async (req, res) => {
             return res.status(400).json({ error: "Geçersiz görev tipi." });
         }
 
-        user.completedQuests.push(questType);
-        user.points = Math.round((user.points + rewardPoints) * 100) / 100;
+        // Bug-fix (yarış durumu): görev tamamlama ve puan ödülü tek bir atomik
+        // güncellemede; koşul (completedQuests içinde questType YOK) sağlanmazsa
+        // (aynı görev için eşzamanlı ikinci istek) null döner - çift ödül yok.
+        const user = await User.findOneAndUpdate(
+            { _id: userId, completedQuests: { $ne: questType } },
+            [{ $set: {
+                completedQuests: { $concatArrays: ['$completedQuests', [questType]] },
+                points: { $round: [{ $add: ['$points', rewardPoints] }, 2] }
+            } }],
+            { new: true, updatePipeline: true }
+        ).select('-password');
 
-        await user.save();
+        if (!user) {
+            return res.status(400).json({ error: "Bu görevi bugün zaten tamamladınız!" });
+        }
+
         res.json({ message: `🌟 Tebrikler! "${title}" tamamlandı ve +${rewardPoints} YürüPara kazanıldı!`, points: user.points });
     } catch (err) {
         res.status(500).json({ error: "Görev hatası." });
@@ -508,19 +691,28 @@ app.post('/api/v2/health/quest', authMiddleware, async (req, res) => {
 // Şans Çarkı
 app.post('/api/v2/wheel/spin', authMiddleware, async (req, res) => {
     try {
-        const user = await User.findById(req.user.id).select('-password');
+        const userId = req.user.id;
         const today = getTodayStr();
-
-        if (user.lastWheelSpinDate === today) {
-            return res.status(400).json({ error: "Bugün zaten çark çevirdiniz!" });
-        }
 
         const prizes = [0.05, 0.10, 0.15, 0.20, 0.25];
         const wonPoints = prizes[Math.floor(Math.random() * prizes.length)];
 
-        user.points = Math.round((user.points + wonPoints) * 100) / 100;
-        user.lastWheelSpinDate = today;
-        await user.save();
+        // Bug-fix (yarış durumu): "bugün çevirdi mi" kontrolü ve puan/tarih
+        // güncellemesi tek bir atomik işlemde; lastWheelSpinDate != today
+        // koşulu sağlanmazsa (aynı gün eşzamanlı ikinci çevirme isteği) null
+        // döner - günde birden fazla çevirme/ödül alınamaz.
+        const user = await User.findOneAndUpdate(
+            { _id: userId, lastWheelSpinDate: { $ne: today } },
+            [{ $set: {
+                points: { $round: [{ $add: ['$points', wonPoints] }, 2] },
+                lastWheelSpinDate: today
+            } }],
+            { new: true, updatePipeline: true }
+        ).select('-password');
+
+        if (!user) {
+            return res.status(400).json({ error: "Bugün zaten çark çevirdiniz!" });
+        }
 
         res.json({ message: `🎡 Çark döndü ve +${wonPoints} YürüPara kazandınız!`, wonPoints, user });
     } catch (err) {
@@ -533,16 +725,33 @@ app.post('/api/v2/wheel/spin', authMiddleware, async (req, res) => {
 // yoksa burada ilk çağrıda üretilir.
 app.get('/api/v2/referral/info', authMiddleware, async (req, res) => {
     try {
-        const user = await User.findById(req.user.id).select('-password');
+        const userId = req.user.id;
+        let user = await User.findById(userId).select('-password');
+
+        // Bug-fix (yarış durumu): referralCode geç-üretimi ve haftalık
+        // sayaç sıfırlaması tam bir save() yerine iki küçük koşullu atomik
+        // güncellemeye ayrıldı; bu route sık çağrıldığından, eşzamanlı bir
+        // isteğin (örn. referral ödülü $inc'i) o arada yazdığı alanları eski
+        // bir kopyayla ezme (lost update) riski vardı.
         if (!user.referralCode) {
-            user.referralCode = user._id.toString().slice(-6).toUpperCase();
+            const newCode = user._id.toString().slice(-6).toUpperCase();
+            const updated = await User.findOneAndUpdate(
+                { _id: userId, $or: [{ referralCode: { $exists: false } }, { referralCode: null }, { referralCode: '' }] },
+                { $set: { referralCode: newCode } },
+                { new: true }
+            ).select('-password');
+            if (updated) user = updated;
         }
+
         const weekStart = getWeekStartStr();
         if (user.referralWeekStart !== weekStart) {
-            user.referralWeekStart = weekStart;
-            user.referralWeekCount = 0;
+            const updated = await User.findOneAndUpdate(
+                { _id: userId, referralWeekStart: { $ne: weekStart } },
+                { $set: { referralWeekStart: weekStart, referralWeekCount: 0 } },
+                { new: true }
+            ).select('-password');
+            if (updated) user = updated;
         }
-        await user.save();
 
         const totalReferred = await User.countDocuments({ referredBy: user._id });
         const totalRewarded = await User.countDocuments({ referredBy: user._id, referralRewardGiven: true });
@@ -566,18 +775,28 @@ app.get('/api/v2/referral/info', authMiddleware, async (req, res) => {
 // sadece o akış tamamlandıktan sonra ödülü günlük limit dahilinde verir.
 app.post('/api/v2/ads/watch', authMiddleware, async (req, res) => {
     try {
-        const user = await User.findById(req.user.id).select('-password');
-        ensureDailyReset(user);
+        const userId = req.user.id;
+        const today = getTodayStr();
+        await atomicEnsureDailyReset(userId, today);
 
         const AD_REWARD = 0.20;
         const MAX_ADS_PER_DAY = 3;
-        if ((user.adWatchesToday || 0) >= MAX_ADS_PER_DAY) {
+
+        // Bug-fix (yarış durumu): günlük limit kontrolü ve artırım/ödül tek
+        // atomik işlemde; adWatchesToday < MAX_ADS_PER_DAY koşulu sağlanmazsa
+        // (limit dolu veya eşzamanlı istek arada doldurmuş) null döner.
+        const user = await User.findOneAndUpdate(
+            { _id: userId, adWatchesToday: { $lt: MAX_ADS_PER_DAY } },
+            [{ $set: {
+                adWatchesToday: { $add: [{ $ifNull: ['$adWatchesToday', 0] }, 1] },
+                points: { $round: [{ $add: ['$points', AD_REWARD] }, 2] }
+            } }],
+            { new: true, updatePipeline: true }
+        ).select('-password');
+
+        if (!user) {
             return res.status(400).json({ error: `Bugünkü reklam izleme hakkınızı (${MAX_ADS_PER_DAY}) kullandınız. Yarın tekrar deneyin!` });
         }
-
-        user.adWatchesToday = (user.adWatchesToday || 0) + 1;
-        user.points = Math.round((user.points + AD_REWARD) * 100) / 100;
-        await user.save();
 
         res.json({
             message: `📺 Reklam tamamlandı! +${AD_REWARD} YürüPara kazandınız. (${user.adWatchesToday}/${MAX_ADS_PER_DAY})`,
@@ -590,47 +809,115 @@ app.post('/api/v2/ads/watch', authMiddleware, async (req, res) => {
     }
 });
 
-// Basit Oyunlar: ödül, istemcinin bildirdiği oynama süresine göre kademeli
-// verilir (1/2/3 dakika -> 0.10/0.20/0.30 YP). Süre istemci tarafından
-// bildirildiği için mükemmel bir hile koruması değildir; günlük 5 talep
-// sınırı ve talepler arası minimum 20sn bekleme ile makul bir sınır konur.
+// Bug-fix (2x Bonus istismarı): önceden /api/v2/steps/convert istemciden gelen
+// isDouble bayrağına doğrudan güveniyordu - istemci hiçbir "reklam" izlemeden
+// doğrudan {isDouble:true} göndererek sınırsız, ücretsiz 2x YürüPara
+// alabiliyordu. Şimdi istemci 5sn'lik simüle reklam akışını TAMAMLADIKTAN
+// SONRA bu uç noktayı çağırır; bu, kısa ömürlü (60sn) bir sunucu-taraflı
+// bayrak set eder ve /steps/convert bunu atomik olarak (aynı işlemde okuyup
+// temizleyerek) tüketir. İstemci bu bayrağı hiç set etmeden isDouble:true
+// göndermeye devam etse bile artık hiçbir etkisi olmaz (bkz. steps/convert
+// içindeki boostCandidate kontrolü).
+app.post('/api/v2/ads/confirm-double', authMiddleware, async (req, res) => {
+    try {
+        await User.updateOne(
+            { _id: req.user.id },
+            { $set: { pendingDoubleBoost: true, pendingDoubleBoostAt: new Date() } }
+        );
+        res.json({ message: "Bonus onaylandı." });
+    } catch (err) {
+        res.status(500).json({ error: "Bonus onay hatası." });
+    }
+});
+
+// Bug-fix: önceden durationMs tamamen istemciden gelen değere güveniyordu -
+// oyunu hiç oynamadan doğrudan {"durationMs": 180000} POST ederek anında
+// maksimum tier ödülü almak ve 20sn bekleme + günlük 5 limit dahilinde bunu
+// tekrarlamak mümkündü. Şimdi süre, /games/start'ın sunucu-taraflı
+// damgaladığı gameSessionStart alanından hesaplanır - istemci artık süreyi
+// BİLDİRMEZ, yalnızca oturumu başlatır/bitirir.
+app.post('/api/v2/games/start', authMiddleware, async (req, res) => {
+    try {
+        await User.updateOne({ _id: req.user.id }, { $set: { gameSessionStart: new Date() } });
+        res.json({ message: "Oyun oturumu başlatıldı." });
+    } catch (err) {
+        res.status(500).json({ error: "Oyun başlatma hatası." });
+    }
+});
+
+// Basit Oyunlar: ödül, sunucu tarafında /games/start ile damgalanan oturum
+// başlangıcından bu yana geçen GERÇEK süreye göre kademeli verilir (1/2/3
+// dakika -> 0.10/0.20/0.30 YP). Günlük 5 talep sınırı ve talepler arası
+// minimum 20sn bekleme de korunur.
 app.post('/api/v2/games/reward', authMiddleware, async (req, res) => {
     try {
-        const durationMs = parseInt(req.body.durationMs);
-        if (!Number.isFinite(durationMs) || durationMs < 1000) {
-            return res.status(400).json({ error: "Geçersiz oyun süresi." });
-        }
+        const userId = req.user.id;
+        const today = getTodayStr();
+        await atomicEnsureDailyReset(userId, today);
 
-        const user = await User.findById(req.user.id).select('-password');
-        ensureDailyReset(user);
+        const preSnapshot = await User.findById(userId).select('gameSessionStart gamesPlayedToday lastGameClaimAt');
+        if (!preSnapshot) return res.status(404).json({ error: "Kullanıcı bulunamadı." });
+
+        if (!preSnapshot.gameSessionStart) {
+            return res.status(400).json({ error: "Aktif bir oyun oturumu bulunamadı. Lütfen oyunu tekrar başlatın." });
+        }
 
         const MAX_GAME_CLAIMS_PER_DAY = 5;
-        if ((user.gamesPlayedToday || 0) >= MAX_GAME_CLAIMS_PER_DAY) {
+        if ((preSnapshot.gamesPlayedToday || 0) >= MAX_GAME_CLAIMS_PER_DAY) {
             return res.status(400).json({ error: `Bugünkü oyun ödülü hakkınızı (${MAX_GAME_CLAIMS_PER_DAY}) kullandınız!` });
         }
-        if (user.lastGameClaimAt && (Date.now() - new Date(user.lastGameClaimAt).getTime()) < 20000) {
+        if (preSnapshot.lastGameClaimAt && (Date.now() - new Date(preSnapshot.lastGameClaimAt).getTime()) < 20000) {
             return res.status(400).json({ error: "Çok hızlı art arda oyun ödülü talep edildi, birkaç saniye bekleyin." });
         }
+
+        const durationMs = Date.now() - new Date(preSnapshot.gameSessionStart).getTime();
 
         let reward = 0;
         if (durationMs >= 180000) reward = 0.30;
         else if (durationMs >= 120000) reward = 0.20;
         else if (durationMs >= 60000) reward = 0.10;
         else {
+            // Süre henüz yetersiz - oturumu BOZMADAN reddet. Süre her zaman
+            // gameSessionStart'tan gerçek zamana göre hesaplandığı için erken
+            // bir talebi reddetmek hiçbir güvenlik açığı doğurmaz (istemci art
+            // arda deneyip dursa bile 60sn dolmadan asla ödül alamaz) - session'ı
+            // burada temizlemek yalnızca meşru bir oyuncunun (ör. "Bitir"e
+            // yanlışlıkla erken basan) o ana kadarki oynama süresini kaybedip
+            // /games/start'ı tekrar çağırmaya zorlanmasına yol açardı.
             return res.status(400).json({ error: "Ödül kazanmak için en az 1 dakika oynamalısınız." });
         }
 
-        user.gamesPlayedToday = (user.gamesPlayedToday || 0) + 1;
-        user.lastGameClaimAt = new Date();
-        user.points = Math.round((user.points + reward) * 100) / 100;
-        await user.save();
+        // Bug-fix (yarış durumu + oturum tekrar kullanımı): gameSessionStart,
+        // preSnapshot'ta okunan DEĞERLE eşleşiyorsa güncellenir ve AYNI atomik
+        // işlemde null'a çekilir - bu hem "lost update"i önler hem de aynı
+        // oyun oturumunun iki kez ödül için talep edilmesini imkansız kılar
+        // (ikinci istek geldiğinde gameSessionStart artık null'dır, koşul
+        // eşleşmez).
+        const updated = await User.findOneAndUpdate(
+            {
+                _id: userId,
+                gameSessionStart: preSnapshot.gameSessionStart,
+                gamesPlayedToday: { $lt: MAX_GAME_CLAIMS_PER_DAY }
+            },
+            [{ $set: {
+                gamesPlayedToday: { $add: [{ $ifNull: ['$gamesPlayedToday', 0] }, 1] },
+                points: { $round: [{ $add: ['$points', reward] }, 2] },
+                lastGameClaimAt: new Date(),
+                gameSessionStart: null
+            } }],
+            { new: true, updatePipeline: true }
+        ).select('-password');
+
+        if (!updated) {
+            return res.status(400).json({ error: "Oyun ödülü alınamadı, lütfen tekrar deneyin." });
+        }
 
         res.json({
-            message: `🎮 Oyun tamamlandı! +${reward} YürüPara kazandınız. (${user.gamesPlayedToday}/${MAX_GAME_CLAIMS_PER_DAY})`,
+            message: `🎮 Oyun tamamlandı! +${reward} YürüPara kazandınız. (${updated.gamesPlayedToday}/${MAX_GAME_CLAIMS_PER_DAY})`,
             reward,
-            gamesPlayedToday: user.gamesPlayedToday,
+            gamesPlayedToday: updated.gamesPlayedToday,
             maxGameClaimsPerDay: MAX_GAME_CLAIMS_PER_DAY,
-            user
+            user: updated
         });
     } catch (err) {
         res.status(500).json({ error: "Oyun ödülü hatası." });
@@ -669,29 +956,34 @@ app.post('/api/v2/donate', authMiddleware, async (req, res) => {
             return res.status(400).json({ error: "Geçersiz bağış miktarı." });
         }
 
-        const user = await User.findById(req.user.id).select('-password');
-        // Ondalık toplama/çıkarma birikimi kayan nokta hatası üretir (ör. 1.00
-        // yerine 0.9999999999999999 saklanabilir); 2 ondalığa yuvarlayarak hem
-        // önceden birikmiş sapmayı düzeltiyoruz hem de "bakiyem yetiyor görünüyor
-        // ama reddediliyor" şikayetini engelliyoruz.
-        const currentPoints = Math.round(user.points * 100) / 100;
-        if (currentPoints < points) return res.status(400).json({ error: "Yetersiz bakiye!" });
+        const roundedPoints = Math.round(points * 100) / 100;
 
-        user.points = Math.round((currentPoints - points) * 100) / 100;
-        user.totalDonations = Math.round((user.totalDonations + points) * 100) / 100;
+        // Bug-fix (yarış durumu): bakiye kontrolü ve düşümü artık tek atomik
+        // işlemde; points >= roundedPoints (küçük bir float toleransıyla)
+        // koşulu sağlanmazsa (yetersiz bakiye VEYA eşzamanlı başka bir harcama
+        // arada bakiyeyi düşürmüşse) güncelleme uygulanmaz - aynı bakiyeden
+        // birden fazla eşzamanlı bağış "lost update" ile geçemez.
+        const user = await User.findOneAndUpdate(
+            { _id: req.user.id, points: { $gte: roundedPoints - POINTS_EPSILON } },
+            [{ $set: {
+                points: { $round: [{ $subtract: ['$points', roundedPoints] }, 2] },
+                totalDonations: { $round: [{ $add: ['$totalDonations', roundedPoints] }, 2] }
+            } }],
+            { new: true, updatePipeline: true }
+        ).select('-password');
+
+        if (!user) return res.status(400).json({ error: "Yetersiz bakiye!" });
 
         const donation = new Donation({
             userId: user._id,
             charityName,
-            stepsDonated: points * 10000,
-            pointsValue: points,
+            stepsDonated: roundedPoints * 10000,
+            pointsValue: roundedPoints,
             icon: charityName.includes('Mama') ? '🐶' : (charityName.includes('Fidan') ? '🌲' : (charityName.includes('Kitap') ? '📚' : '❤️'))
         });
-
-        await user.save();
         await donation.save();
 
-        res.json({ message: `❤️ "${charityName}" için ${points} YürüPara bağışlandı. Teşekkürler!`, user });
+        res.json({ message: `❤️ "${charityName}" için ${roundedPoints} YürüPara bağışlandı. Teşekkürler!`, user });
     } catch (err) {
         res.status(500).json({ error: "Bağış hatası." });
     }
@@ -711,54 +1003,115 @@ app.get('/api/v2/charities', async (req, res) => {
     } catch (err) { res.status(500).json({ error: "Bağış kurumları alınamadı." }); }
 });
 
+// Bug-fix (en ciddi yarış durumu): önceden reward.stock ve user.points
+// findById -> JS'de mutasyon -> save() (tam doküman üzerine yazma) ile
+// değiştiriliyordu, hiçbir atomik koşul yoktu. Bir kullanıcının aynı ödül
+// için N eşzamanlı talep göndermesi durumunda, N talebin HEPSİ birbirinden
+// bağımsız aynı bayat bakiye anlık görüntüsünden okuyup "yeterli bakiye var"
+// sonucuna varabiliyor ve N adet dijital kod (Steam/Spotify/vb.) üretilirken
+// yalnızca SON save() gerçek bakiyeyi yansıtıyordu - kullanıcı tek ödeme ile
+// sınırsız kod alabiliyordu. Aynı şekilde stok da negatife düşebiliyordu.
+//
+// Çözüm: puan düşümü ve stok düşümü iki AYRI dokümanın (User, Reward) birlikte
+// tutarlı olması gereken bir işlem olduğu için (tam olarak review'da belirtilen
+// "tek bir atomik güncellemenin ön koşulu ifade edemediği" durum), gerçek bir
+// MongoDB transaction kullanılır: puan düşümü VE stok düşümü ya birlikte
+// uygulanır ya da hiçbiri uygulanmaz (stok yetersizse puan düşümü otomatik
+// olarak geri alınır - "hayalet düşüm" riski yok). Atlas cluster'ları her
+// zaman replica set olduğundan (M0 dahil) transaction desteklenir.
 app.post('/api/v2/rewards/claim', authMiddleware, async (req, res) => {
+    const session = await mongoose.startSession();
+    let httpStatus = 500;
+    let httpPayload = { error: "Dijital kod alma hatası." };
+
     try {
-        const { rewardId } = req.body;
-        const reward = await Reward.findById(rewardId);
-        if (!reward || reward.stock <= 0) return res.status(400).json({ error: "Stokta yok." });
+        await session.withTransaction(async () => {
+            const { rewardId } = req.body;
+            const reward = await Reward.findById(rewardId).session(session);
+            if (!reward) {
+                httpStatus = 400; httpPayload = { error: "Stokta yok." };
+                throw new Error('ABORT_CLAIM');
+            }
 
-        const user = await User.findById(req.user.id).select('-password');
-        // Bkz. /api/v2/donate: ondalık birikim hatasına karşı yuvarlanmış bakiye
-        // ile karşılaştırıyoruz.
-        const currentPoints = Math.round(user.points * 100) / 100;
-        if (currentPoints < reward.pointsCost) return res.status(400).json({ error: `Yetersiz YürüPara! Bu ürün için ${reward.pointsCost} YP gereklidir.` });
+            const isDiet = reward.code === 'DIET-PLAN-CUSTOM';
+            if (!isDiet && reward.stock <= 0) {
+                httpStatus = 400; httpPayload = { error: "Stokta yok." };
+                throw new Error('ABORT_CLAIM');
+            }
 
-        user.points = Math.round((currentPoints - reward.pointsCost) * 100) / 100;
+            // Bakiye kontrolü + düşümü tek atomik koşullu güncelleme: points
+            // >= pointsCost sağlanmazsa (yetersiz bakiye VEYA eşzamanlı başka
+            // bir talep arada bakiyeyi düşürmüşse) null döner.
+            const user = await User.findOneAndUpdate(
+                { _id: req.user.id, points: { $gte: reward.pointsCost - POINTS_EPSILON } },
+                [{ $set: { points: { $round: [{ $subtract: ['$points', reward.pointsCost] }, 2] } } }],
+                { new: true, session, updatePipeline: true }
+            ).select('-password');
 
-        if (reward.code === 'DIET-PLAN-CUSTOM') {
-            const uniqueCode = `DIET-UNLOCK-${Math.floor(100000 + Math.random() * 900000)}`;
-            const claim = new Claim({ userId: user._id, rewardTitle: reward.title, pointsSpent: reward.pointsCost, code: uniqueCode });
-            await user.save();
-            await claim.save();
+            if (!user) {
+                httpStatus = 400;
+                httpPayload = { error: `Yetersiz YürüPara! Bu ürün için ${reward.pointsCost} YP gereklidir.` };
+                throw new Error('ABORT_CLAIM');
+            }
 
-            return res.json({ 
-                message: `🥗 Tebrikler! Kişiye özel diyetisyen planınız YürüPara ile açıldı. Profil sekmenizden planınızı inceleyebilirsiniz!`, 
-                code: uniqueCode, 
-                isDiet: true,
-                user 
-            });
+            if (isDiet) {
+                // Diyet planı sınırsız stokludur (orijinal davranışla aynı -
+                // stok hiç düşürülmez).
+                const uniqueCode = `DIET-UNLOCK-${Math.floor(100000 + Math.random() * 900000)}`;
+                await Claim.create([{ userId: user._id, rewardTitle: reward.title, pointsSpent: reward.pointsCost, code: uniqueCode }], { session });
+
+                httpStatus = 200;
+                httpPayload = {
+                    message: `🥗 Tebrikler! Kişiye özel diyetisyen planınız YürüPara ile açıldı. Profil sekmenizden planınızı inceleyebilirsiniz!`,
+                    code: uniqueCode,
+                    isDiet: true,
+                    user
+                };
+                return;
+            }
+
+            // Stok atomik olarak, yalnızca hâlâ > 0 ise düşürülür (aynı
+            // transaction içinde). Koşul sağlanmazsa (transaction başladıktan
+            // sonra ama biz kontrol ettikten sonra başka bir transaction'ın
+            // son birimi tükettiği nadir durum) yukarıdaki puan düşümü de
+            // transaction abort edildiği için OTOMATİK GERİ ALINIR - kullanıcı
+            // asla ödeme yapıp kod alamadan bakiyesini kaybetmez.
+            const updatedReward = await Reward.findOneAndUpdate(
+                { _id: reward._id, stock: { $gt: 0 } },
+                { $inc: { stock: -1 } },
+                { new: true, session }
+            );
+            if (!updatedReward) {
+                httpStatus = 400; httpPayload = { error: "Stokta yok." };
+                throw new Error('ABORT_CLAIM');
+            }
+
+            const uniqueDigitalCode = `${reward.code}-${Math.floor(100000 + Math.random() * 900000)}`;
+            await Claim.create([{
+                userId: user._id,
+                rewardTitle: reward.title,
+                pointsSpent: reward.pointsCost,
+                code: uniqueDigitalCode
+            }], { session });
+
+            httpStatus = 200;
+            httpPayload = {
+                message: `🎉 Tebrikler! Dijital kodunuz anında hazırlandı. Kuponlarım sekmesinden kopyalayabilirsiniz.`,
+                code: uniqueDigitalCode,
+                user
+            };
+        });
+    } catch (err) {
+        if (err.message !== 'ABORT_CLAIM') {
+            console.error('Ödül talep hatası:', err);
+            httpStatus = 500;
+            httpPayload = { error: "Dijital kod alma hatası." };
         }
+    } finally {
+        session.endSession();
+    }
 
-        reward.stock -= 1;
-        const uniqueDigitalCode = `${reward.code}-${Math.floor(100000 + Math.random() * 900000)}`;
-
-        const claim = new Claim({ 
-            userId: user._id, 
-            rewardTitle: reward.title, 
-            pointsSpent: reward.pointsCost, 
-            code: uniqueDigitalCode 
-        });
-
-        await user.save();
-        await reward.save();
-        await claim.save();
-
-        res.json({ 
-            message: `🎉 Tebrikler! Dijital kodunuz anında hazırlandı. Kuponlarım sekmesinden kopyalayabilirsiniz.`, 
-            code: uniqueDigitalCode, 
-            user 
-        });
-    } catch (err) { res.status(500).json({ error: "Dijital kod alma hatası." }); }
+    res.status(httpStatus).json(httpPayload);
 });
 
 // --- v2.6 ADMIN ROTALARI ---
@@ -794,11 +1147,26 @@ app.get('/api/v2/admin/users', authMiddleware, adminMiddleware, async (req, res)
     }
 });
 
+// Bug-fix: /api/v2/admin/charities/add'in aksine burada hiç doğrulama yoktu.
+// Boş/sayısal-olmayan bir pointsCost parseFloat ile NaN'a dönüşüyor ve
+// Mongoose'un zorunlu-Number kontrolünü geçiyordu (typeof NaN === 'number').
+// Bu ödülü talep eden herhangi bir kullanıcının points bakiyesi kalıcı olarak
+// NaN'a bozuluyordu (currentPoints < NaN her zaman false olduğu için bakiye
+// kontrolü asla engellemiyor, sonraki çıkarma işlemi de NaN'ı yayıyordu).
 app.post('/api/v2/admin/rewards/add', authMiddleware, adminMiddleware, async (req, res) => {
     try {
         const { title, description, pointsCost, category, code, icon, stock } = req.body;
+        if (!title || !description) return res.status(400).json({ error: "Başlık ve açıklama zorunludur." });
+        if (!code) return res.status(400).json({ error: "Ürün kodu zorunludur." });
+
+        const cost = parseFloat(pointsCost);
+        if (!Number.isFinite(cost) || cost <= 0) return res.status(400).json({ error: "Geçersiz fiyat." });
+
+        const stockNum = parseInt(stock);
+        const finalStock = Number.isFinite(stockNum) && stockNum >= 0 ? stockNum : 50;
+
         const newReward = new Reward({
-            title, description, pointsCost: parseFloat(pointsCost), category, code, icon, stock: parseInt(stock) || 50
+            title, description, pointsCost: cost, category, code, icon, stock: finalStock
         });
         await newReward.save();
         res.json({ message: `🎁 "${title}" ürünü dijital mağazaya eklendi!`, reward: newReward });
