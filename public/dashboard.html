@@ -651,6 +651,12 @@
         const token = localStorage.getItem('token_v2');
         if (!token) window.location.href = '/index.html';
 
+        // Capacitor Android WebView, sayfaya otomatik olarak window.Capacitor köprü
+        // nesnesini enjekte eder (aynı dosya hem düz web/PWA'da hem native Android'de
+        // yüklenir). Bu bayrak, adım sayar için native (StepTracker plugin) yolu mu
+        // yoksa mevcut devicemotion tabanlı web yolu mu kullanılacağını belirler.
+        const isNativeAndroid = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform() && window.Capacitor.getPlatform && window.Capacitor.getPlatform() === 'android');
+
         // Kullanıcı adı gibi kullanıcı tarafından belirlenebilen alanlar kaçışsız
         // innerHTML'e basılırsa saklı (stored) XSS oluşur; liderlik tablosu herkese
         // görünür olduğu için kötü niyetli bir isimle kayıt olan biri tüm
@@ -668,7 +674,20 @@
             setTimeout(() => b.style.display = 'none', 3000);
         }
 
-        function logout() { localStorage.removeItem('token_v2'); window.location.href = '/index.html'; }
+        function logout() {
+            // Bug-fix: eskiden çıkış yapınca native arka plan adım servisi
+            // durdurulmuyordu - kullanıcı çıkış yaptığını sandıktan SONRA bile
+            // servis eski (artık geçersiz olacak) token'la 7 güne kadar adımları
+            // senkronize etmeye devam ediyordu, ve aynı cihaza sonra giriş yapan
+            // FARKLI bir kullanıcı refreshToken/getStatus ile bu servisi devralıp
+            // "aktif" bir duruma düşebiliyordu. En iyi çaba (best-effort, sonucu
+            // beklemeden) ile durduruyoruz - başarısız olsa bile çıkışı engellemez.
+            if (isNativeAndroid) {
+                try { window.Capacitor.Plugins.StepTracker.stop().catch(() => {}); } catch (e) {}
+            }
+            localStorage.removeItem('token_v2');
+            window.location.href = '/index.html';
+        }
 
         async function fetchUserData() {
             try {
@@ -1269,6 +1288,19 @@
         }
 
         async function toggleStepSensor() {
+            // Native Android: tamamen ayrı bir yol - Capacitor StepTracker plugin'i
+            // arka planda (ekran kilitliyken bile) çalışan native bir foreground
+            // service başlatıp durdurur. Mevcut devicemotion/Wake Lock mantığı bu
+            // dalda HİÇ çalışmaz.
+            if (isNativeAndroid) {
+                if (isSensorActive) {
+                    await stopNativeStepTracking();
+                } else {
+                    await startNativeStepTracking();
+                }
+                return;
+            }
+
             if (isSensorActive) {
                 stopMotionListener('Sensör durduruldu.');
                 return;
@@ -1336,6 +1368,61 @@
             if (message) showAlert(message);
         }
 
+        // --- Native Android Adım Takibi (Capacitor StepTracker plugin) ---
+        // Native taraf adımları kendi OkHttp çağrılarıyla /api/v2/steps/add'e
+        // senkronize eder - burada sadece başlat/durdur/izin akışını yönetiyoruz.
+        async function startNativeStepTracking() {
+            try {
+                const StepTracker = window.Capacitor.Plugins.StepTracker;
+                let status = await StepTracker.checkPermissions();
+                const isFullyGranted = (s) => !!s && s.activityRecognition === 'granted' && s.notifications === 'granted';
+
+                if (!isFullyGranted(status)) {
+                    showAlert('🔒 Arka planda adım sayabilmek için hareket ve bildirim izni gerekiyor.');
+                    status = await StepTracker.requestPermissions();
+                }
+
+                if (!isFullyGranted(status)) {
+                    showAlert('❌ İzin verilmediği için arka plan adım takibi başlatılamadı. Ayarlardan izin verip tekrar deneyin.');
+                    return;
+                }
+
+                await StepTracker.start({ token });
+
+                isSensorActive = true;
+                const btn = document.getElementById('sensorBtn');
+                if (btn) {
+                    btn.textContent = '🟢 TEPE ALGILAMA SENSÖRÜ AKTİF (Yürüyün)';
+                    btn.className = 'm-btn m-btn-gold';
+                }
+                const hint = document.getElementById('sensorHint');
+                if (hint) {
+                    hint.textContent = '👟 Arka planda, ekran kilitliyken bile adım sayıyor 👟';
+                    hint.style.display = 'block';
+                }
+                showAlert('👟 Arka plan adım takibi aktif! Ekranı kilitleseniz de uygulamadan çıksanız da saymaya devam eder.');
+            } catch (err) {
+                showAlert('❌ Adım takibi başlatılırken bir hata oluştu. Tekrar deneyin.');
+            }
+        }
+
+        async function stopNativeStepTracking() {
+            try {
+                await window.Capacitor.Plugins.StepTracker.stop();
+            } catch (err) {
+                showAlert('❌ Adım takibi durdurulurken bir hata oluştu.');
+            } finally {
+                isSensorActive = false;
+                const btn = document.getElementById('sensorBtn');
+                if (btn) {
+                    btn.textContent = '📱 CANLI SENSÖRÜ BAŞLAT (Yürürken Say)';
+                    btn.className = 'm-btn m-btn-blue';
+                }
+                const hint = document.getElementById('sensorHint');
+                if (hint) hint.style.display = 'none';
+            }
+        }
+
         // Sekme arka plana alındığında birikmiş adımları senkronize et; öne dönünce
         // (sensör hâlâ açık işaretliyse) dinleyiciyi kaldığı yerden devam ettir.
         // NOT: Wake Lock spesifikasyonu gereği sekme gizlenince kilit tarayıcı
@@ -1345,7 +1432,14 @@
         document.addEventListener('visibilitychange', () => {
             if (document.hidden) {
                 if (isSensorActive) flushPendingSteps();
-            } else if (isSensorActive) {
+            } else if (isSensorActive && !isNativeAndroid) {
+                // Bug-fix: bu dal eskiden isNativeAndroid'i kontrol etmiyordu - native
+                // Android'de arka plan servisi zaten kesintisiz sayarken, ekran
+                // kilidi açılınca burası devicemotion dinleyicisini de tekrar
+                // takıyordu. Sonuç: aynı fiziksel adımlar hem native (source:
+                // native_sensor) hem web sezgiseli (source: web_motion) üzerinden
+                // AYRI AYRI sunucuya gönderilip çift sayılıyordu. Native'de bu dal
+                // hiç çalışmamalı - web devicemotion yolu sadece web/iOS/PWA içindir.
                 window.removeEventListener('devicemotion', handleMotion);
                 window.addEventListener('devicemotion', handleMotion, false);
                 requestWakeLock();
@@ -2106,6 +2200,30 @@
                     }
                 }
             };
+        }
+
+        // Native Android: her sayfa yüklemesinde native tarafın önbelleğe aldığı
+        // JWT'yi güncelle (arka planda çalışan servis varsa yeni girişi hemen
+        // yakalasın) ve gerçek servis durumunu sorup UI'ı buna göre başlat - WebView
+        // yeniden yüklenmiş olsa bile native foreground service arka planda hâlâ
+        // çalışıyor olabilir, bu durumda buton yanlışlıkla "başlat" görünmemeli.
+        if (isNativeAndroid) {
+            window.Capacitor.Plugins.StepTracker.refreshToken({ token }).catch(() => {});
+            window.Capacitor.Plugins.StepTracker.getStatus().then((status) => {
+                if (status && status.running) {
+                    isSensorActive = true;
+                    const btn = document.getElementById('sensorBtn');
+                    if (btn) {
+                        btn.textContent = '🟢 TEPE ALGILAMA SENSÖRÜ AKTİF (Yürüyün)';
+                        btn.className = 'm-btn m-btn-gold';
+                    }
+                    const hint = document.getElementById('sensorHint');
+                    if (hint) {
+                        hint.textContent = '👟 Arka planda, ekran kilitliyken bile adım sayıyor 👟';
+                        hint.style.display = 'block';
+                    }
+                }
+            }).catch(() => {});
         }
 
         // Init

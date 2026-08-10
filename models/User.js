@@ -8,6 +8,11 @@ const UserSchema = new mongoose.Schema({
     unconvertedSteps: { type: Number, default: 0 },
     todayConvertedSteps: { type: Number, default: 0 },
     lastStepDate: { type: String, default: '' },
+    // v2 Android native wrapper: en son /api/v2/steps/add çağrısının kaynağı
+    // ('web_motion' = tarayıcı devicemotion sezgisel algoritması, 'native_sensor'
+    // = Android TYPE_STEP_COUNTER donanım sayacı). Salt analitik/anti-hile
+    // görünürlüğü içindir - puan/adım hesaplamasını ETKİLEMEZ.
+    lastStepSource: { type: String, default: 'web_motion' },
     points: { type: Number, default: 0 },
     calories: { type: Number, default: 0 },
     streak: { type: Number, default: 1 },

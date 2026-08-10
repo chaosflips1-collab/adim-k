@@ -10,6 +10,8 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/core": "^8.5.0",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
@@ -17,5 +19,8 @@
     "google-auth-library": "^11.0.0",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^9.9.1"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.5.0"
   }
 }

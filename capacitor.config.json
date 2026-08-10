@@ -1,0 +1,9 @@
+{
+  "appId": "com.adimkasasi.pro",
+  "appName": "AdımKasası PRO",
+  "webDir": "public",
+  "server": {
+    "url": "https://adim-k.onrender.com",
+    "cleartext": false
+  }
+}

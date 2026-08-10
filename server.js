@@ -363,6 +363,13 @@ app.post('/api/v2/steps/add', authMiddleware, async (req, res) => {
         if (!Number.isFinite(amount) || amount <= 0 || amount > 2000) {
             return res.status(400).json({ error: "Geçersiz adım miktarı." });
         }
+        // v2 Android native wrapper: istemci isteğe bağlı olarak bu senkronun
+        // kaynağını bildirebilir (native foreground service TYPE_STEP_COUNTER'dan
+        // mı, yoksa web devicemotion sezgiselinden mi geldi). Bilinmeyen/eksik
+        // değer sessizce mevcut varsayılana ('web_motion') düşer - eski istemciler
+        // (source göndermeyen) davranışta hiçbir değişiklik görmez.
+        const allowedSources = ['web_motion', 'native_sensor'];
+        const source = allowedSources.includes(req.body.source) ? req.body.source : 'web_motion';
         const userId = req.user.id;
         const today = getTodayStr();
         await atomicEnsureDailyReset(userId, today);
@@ -382,7 +389,10 @@ app.post('/api/v2/steps/add', authMiddleware, async (req, res) => {
         // kayboluyordu - "lost update").
         const updated = await User.findOneAndUpdate(
             { _id: userId },
-            { $inc: { steps: amount, unconvertedSteps: amount, calories: burnedCaloriesDelta } },
+            {
+                $inc: { steps: amount, unconvertedSteps: amount, calories: burnedCaloriesDelta },
+                $set: { lastStepSource: source }
+            },
             { new: true }
         ).select('-password');
         if (!updated) return res.status(404).json({ error: "Kullanıcı bulunamadı." });

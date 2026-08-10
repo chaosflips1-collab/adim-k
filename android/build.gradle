@@ -1,0 +1,41 @@
+// Top-level build file where you can add configuration options common to all sub-projects/modules.
+
+buildscript {
+    
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.13.0'
+        classpath 'com.google.gms:google-services:4.4.4'
+        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:2.0.21'
+
+        // NOTE: Do not place your application dependencies here; they belong
+        // in the individual module build.gradle files
+    }
+}
+
+apply from: "variables.gradle"
+
+// Bug-fix: this project lives under OneDrive's synced Desktop folder. OneDrive's sync
+// client intermittently locks/replaces files under Gradle's incremental build-state
+// directories (build/intermediates/...) mid-write, causing sporadic
+// "Cannot snapshot ...: not a regular file" failures unrelated to any actual code
+// change (observed repeatedly this session). Redirecting every module's build output
+// outside the OneDrive-synced tree removes the class of failure entirely instead of
+// requiring a manual clean+retry every time it flakes.
+def externalBuildRoot = new File(System.getProperty("user.home"), ".gradle-builds/adimkasasi-v2-android")
+rootProject.buildDir = new File(externalBuildRoot, "root")
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    buildDir = new File(externalBuildRoot, project.name)
+}
+
+task clean(type: Delete) {
+    delete rootProject.buildDir
+}
