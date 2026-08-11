@@ -1660,6 +1660,7 @@
 
         function startGame() {
             document.getElementById('gamePreOverlay').classList.add('hidden');
+            document.getElementById('gameOverOverlay').classList.add('hidden');
 
             // Bug-fix (bkz. eski oyun modülü): sunucu tarafında oyun oturumunun
             // GERÇEK başlangıç zamanını damgalar (gameSessionStart). Süre veya
@@ -1693,7 +1694,12 @@
         }
 
         function gameLoop(timestamp) {
-            if (!gameState || !gameState.running) return;
+            if (!gameState) return;
+            // gameState.running bir önceki karede değil, bir pointer olayında
+            // (bomba kesme, iskele kaçırma) senkron olarak false'a düşebilir -
+            // bu durumda bir sonraki kare burada yakalayıp endRound'u tetiklemeli,
+            // yoksa oyun hiç temizlenmeden donar (bkz. eski donma bug'ı).
+            if (!gameState.running) { endRound(gameState.score); return; }
             const dt = Math.min(timestamp - (gameState.lastTs || timestamp), 50);
             gameState.lastTs = timestamp;
             gameState.update(dt);
