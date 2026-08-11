@@ -6,7 +6,10 @@ import android.content.Context
 import android.content.Intent
 import android.hardware.Sensor
 import android.hardware.SensorManager
+import android.net.Uri
 import android.os.Build
+import android.os.PowerManager
+import android.provider.Settings
 import androidx.core.content.ContextCompat
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
@@ -99,9 +102,48 @@ class StepTrackerPlugin : Plugin() {
         }
         ContextCompat.startForegroundService(ctx, intent)
 
+        // Correct foreground-service usage + TYPE_STEP_COUNTER is already Doze-exempt on
+        // stock Android, but Xiaomi/HyperOS layers its own, much more aggressive battery
+        // manager on top that kills foreground services anyway unless the app is
+        // explicitly whitelisted. This is the standard (if HyperOS-incomplete) mitigation:
+        // ask the user, once, right when they turn tracking on.
+        maybeRequestBatteryOptimizationExemption(ctx)
+
         val ret = JSObject()
         ret.put("started", true)
         call.resolve(ret)
+    }
+
+    /**
+     * Fires the system "ignore battery optimizations" dialog for this app, at most once
+     * ever (tracked in SecureStore) - not on every start()/app launch, so dismissing it
+     * once doesn't turn into a nag. Does NOT gate/block step tracking on the outcome:
+     * this is best-effort hardening, not a requirement, and start() has already succeeded
+     * by the time this runs.
+     *
+     * Note: this only reduces (does not eliminate) the odds of HyperOS killing the
+     * service - MIUI/HyperOS's separate "Autostart" toggle is a distinct, vendor-specific
+     * setting with no reliable public API/intent across HyperOS versions, and is
+     * intentionally NOT handled here (see StepTrackerService docs / launch checklist).
+     */
+    private fun maybeRequestBatteryOptimizationExemption(ctx: Context) {
+        if (SecureStore.hasAskedBatteryOptimization(ctx)) return
+
+        val powerManager = ctx.getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return
+        if (powerManager.isIgnoringBatteryOptimizations(ctx.packageName)) return
+
+        SecureStore.setAskedBatteryOptimization(ctx, true)
+        try {
+            val exemptionIntent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                data = Uri.parse("package:${ctx.packageName}")
+                if (activity == null) addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            (activity ?: ctx).startActivity(exemptionIntent)
+        } catch (e: Exception) {
+            // A handful of OEM/custom ROMs don't ship the settings screen this action
+            // targets, or reject it outright - swallow rather than crash a start() call
+            // that has already genuinely succeeded (foreground service + sensor are up).
+        }
     }
 
     /**

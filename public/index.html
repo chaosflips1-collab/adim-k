@@ -278,7 +278,7 @@
         <!-- GERÇEK GOOGLE İLE GİRİŞ: tam sayfa yönlendirmesiyle Google'ın kendi
              onay ekranına gider (fetch değil - OAuth Authorization Code akışı
              gerçek bir tarayıcı navigasyonu gerektirir). -->
-        <a href="/api/v2/auth/google" class="google-btn" style="text-decoration:none;">
+        <a href="/api/v2/auth/google" id="googleBtn" class="google-btn" style="text-decoration:none;">
             <img src="/assets/google-icon.svg" alt="Google" class="google-icon">
             Google İle Devam Et
         </a>
@@ -367,6 +367,71 @@
 
         // Davet linkiyle gelindiyse (?ref=KOD) kaydı o kişiye bağlamak için kodu sakla.
         const refCode = new URLSearchParams(window.location.search).get('ref') || '';
+
+        // Capacitor Android WebView, sayfaya otomatik olarak window.Capacitor köprü
+        // nesnesini enjekte eder (dashboard.html'deki StepTracker kullanımıyla aynı
+        // tespit deseni). Google onay ekranı embedded WebView içinde açılamadığı
+        // (Google bunu güvenlik gerekçesiyle engelliyor) için native tarafta bu
+        // bayrağı, Google butonunu düz <a href> navigasyonu yerine Browser
+        // plugin'iyle (in-app Custom Tab) açmak için kullanıyoruz.
+        const isNativeAndroid = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform() && window.Capacitor.getPlatform && window.Capacitor.getPlatform() === 'android');
+
+        if (isNativeAndroid) {
+            const googleBtn = document.getElementById('googleBtn');
+            googleBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                // ?platform=native -> server.js bunu Google'ın "state" parametresine
+                // koyup callback'te aynen geri alır, böylece callback kullanıcıyı
+                // düz https sayfası yerine uygulamanın deep link'ine yönlendirebilir.
+                // Browser.open native tarafta Uri.parse() ile açılır - fetch/<a href>
+                // aksine document.baseURI'ye göre çözümlenmez, bu yüzden şemasız
+                // (göreli) bir URL burada sessizce başarısız olur; origin'i elle ekliyoruz.
+                window.Capacitor.Plugins.Browser.open({ url: `${window.location.origin}/api/v2/auth/google?platform=native` });
+            });
+
+            // Google onayı tamamlanınca server.js /auth/google/callback isteği
+            // adimkasasi://auth-callback?code=... (başarı) ya da ?error=1 (iptal/hata)
+            // deep link'ine yönlendirir. AndroidManifest'teki custom scheme
+            // intent-filter bunu yakalayıp uygulamayı (singleTask) öne getirir ve
+            // bu olayı tetikler.
+            window.Capacitor.Plugins.App.addListener('appUrlOpen', (data) => {
+                (async () => {
+                    try {
+                        const url = new URL(data.url);
+
+                        if (url.searchParams.get('error')) {
+                            window.Capacitor.Plugins.Browser.close().catch(() => {});
+                            showMsg('Google girişi tamamlanamadı, tekrar dene.', true);
+                            return;
+                        }
+
+                        // Gerçek JWT deep link'e konmuyor (custom scheme başka bir
+                        // uygulama tarafından da talep edilebilir) - onun yerine tek
+                        // kullanımlık bir değişim kodu geliyor, bunu HTTPS üzerinden
+                        // /api/v2/auth/exchange'e POST edip gerçek token'ı alıyoruz.
+                        const exchangeCode = url.searchParams.get('code');
+                        if (exchangeCode) {
+                            const resp = await fetch('/api/v2/auth/exchange', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ code: exchangeCode })
+                            });
+                            if (!resp.ok) {
+                                window.Capacitor.Plugins.Browser.close().catch(() => {});
+                                showMsg('Google girişi tamamlanamadı, tekrar dene.', true);
+                                return;
+                            }
+                            const data2 = await resp.json();
+                            if (data2 && data2.token) {
+                                localStorage.setItem('token_v2', data2.token);
+                                window.Capacitor.Plugins.Browser.close().catch(() => {});
+                                window.location.href = '/dashboard.html';
+                            }
+                        }
+                    } catch (err) {}
+                })();
+            });
+        }
 
         const registerContainer = document.getElementById('registerContainer');
         const loginContainer = document.getElementById('loginContainer');

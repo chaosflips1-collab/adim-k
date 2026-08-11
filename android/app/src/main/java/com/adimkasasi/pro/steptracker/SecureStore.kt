@@ -18,6 +18,7 @@ object SecureStore {
     private const val PREFS_NAME = "step_tracker_secure_prefs"
     private const val KEY_TOKEN = "auth_token"
     private const val KEY_RUNNING = "service_running"
+    private const val KEY_BATTERY_OPT_ASKED = "battery_opt_asked"
     private const val LAST_CUMULATIVE_PREFIX = "last_cumulative_"
     private const val PENDING_DELTA_PREFIX = "pending_delta_"
 
@@ -57,6 +58,19 @@ object SecureStore {
     }
 
     fun isRunning(context: Context): Boolean = get(context).getBoolean(KEY_RUNNING, false)
+
+    // Bug-fix target: HyperOS/MIUI kills the foreground service anyway unless the app is
+    // whitelisted from battery optimization. We ask the user once (system dialog via
+    // ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS) the first time tracking is enabled and
+    // remember that we asked, so a dismissal doesn't turn into a nag on every app launch -
+    // PowerManager.isIgnoringBatteryOptimizations() itself is checked live each time
+    // (not cached here) since the user can change it from system Settings independently.
+    fun hasAskedBatteryOptimization(context: Context): Boolean =
+        get(context).getBoolean(KEY_BATTERY_OPT_ASKED, false)
+
+    fun setAskedBatteryOptimization(context: Context, asked: Boolean) {
+        get(context).edit().putBoolean(KEY_BATTERY_OPT_ASKED, asked).apply()
+    }
 
     fun getLastCumulative(context: Context, userId: String): Long =
         get(context).getLong(LAST_CUMULATIVE_PREFIX + userId, NO_BASELINE)

@@ -263,21 +263,60 @@ app.post('/api/v2/login', async (req, res) => {
 // gerçek yönetici hesabına şifresiz girebiliyordu.)
 app.get('/api/v2/auth/google', (req, res) => {
     if (!googleClient) return res.status(503).send('Google ile giriş şu anda yapılandırılmamış.');
-    const url = googleClient.generateAuthUrl({
+    // Native Android: index.html bu uç noktayı ?platform=native ile Custom Tab
+    // (Browser plugin) içinde açar. Google'ın onay ekranı embedded WebView'i
+    // reddettiği için bu zorunlu - ama bu yüzden callback'in kullanıcıyı normal
+    // https sayfasına değil, uygulamaya geri dönen bir deep link'e yönlendirmesi
+    // gerekiyor. Sunucu tarafında oturum/state tutmadan bu bilgiyi callback'e
+    // taşımanın yolu Google'ın aynen geri yansıttığı "state" parametresi.
+    const options = {
         access_type: 'online',
         scope: ['profile', 'email'],
         prompt: 'select_account'
-    });
+    };
+    if (req.query.platform === 'native') {
+        options.state = 'native';
+    }
+    const url = googleClient.generateAuthUrl(options);
     res.redirect(url);
 });
+
+// Native akışta (?platform=native ile başlayan, state='native' taşıyan) hata/iptal
+// durumunda kullanıcıyı yine /index.html?googleError=1'e (düz https) yönlendirmek,
+// onu Custom Tab içinde mahsur bırakır - orijinal bug'ın ta kendisi. State='native'
+// ise deep link'e (adimkasasi://auth-callback?error=1) yönlendirmemiz gerekiyor ki
+// uygulama geri planı yakalayıp kullanıcıyı uygulama içine döndürebilsin.
+function googleAuthFailRedirect(req, res) {
+    if (req.query.state === 'native') return res.redirect('adimkasasi://auth-callback?error=1');
+    return res.redirect('/index.html?googleError=1');
+}
+
+// Native akışın tek kullanımlık, kısa ömürlü değişim kodları: gerçek JWT'yi
+// adimkasasi:// gibi bir custom scheme deep link'ine koymak istemiyoruz çünkü bu
+// şema başka bir (kötü niyetli/klon) uygulama tarafından da intent-filter ile
+// talep edilebilir - Android bir seçim ekranı gösterir ama kullanıcı yanlış
+// uygulamayı seçerse token o uygulamaya gider. Bunun yerine deep link'e rastgele,
+// tahmin edilemez, tek kullanımlık bir kod koyup gerçek JWT'yi sadece sunucu
+// belleğinde bu koda eşleyerek 60 saniye saklıyoruz; native taraf kodu HTTPS
+// üzerinden /api/v2/auth/exchange'e POST edip gerçek token'ı öyle alır.
+const googleNativeExchangeCodes = new Map(); // code -> { token, expiresAt }
+const GOOGLE_NATIVE_EXCHANGE_TTL_MS = 60 * 1000;
+
+function createGoogleNativeExchangeCode(token) {
+    const code = crypto.randomBytes(24).toString('hex');
+    const expiresAt = Date.now() + GOOGLE_NATIVE_EXCHANGE_TTL_MS;
+    googleNativeExchangeCodes.set(code, { token, expiresAt });
+    setTimeout(() => googleNativeExchangeCodes.delete(code), GOOGLE_NATIVE_EXCHANGE_TTL_MS).unref();
+    return code;
+}
 
 // Google Cloud Console'da tanımlı "Authorized redirect URI" ile bu yolun
 // (GOOGLE_CALLBACK_URL) BİREBİR aynı olması gerekir.
 app.get('/auth/google/callback', async (req, res) => {
     try {
-        if (!googleClient) return res.redirect('/index.html?googleError=1');
+        if (!googleClient) return googleAuthFailRedirect(req, res);
         const { code } = req.query;
-        if (!code) return res.redirect('/index.html?googleError=1');
+        if (!code) return googleAuthFailRedirect(req, res);
 
         const { tokens } = await googleClient.getToken(code);
         const ticket = await googleClient.verifyIdToken({
@@ -285,7 +324,7 @@ app.get('/auth/google/callback', async (req, res) => {
             audience: process.env.GOOGLE_CLIENT_ID
         });
         const payload = ticket.getPayload();
-        if (!payload || !payload.email) return res.redirect('/index.html?googleError=1');
+        if (!payload || !payload.email) return googleAuthFailRedirect(req, res);
 
         const email = payload.email.toLowerCase();
         const name = payload.name || email.split('@')[0];
@@ -308,11 +347,44 @@ app.get('/auth/google/callback', async (req, res) => {
         }
 
         const token = jwt.sign({ id: user._id, email: user.email, name: user.name, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
+
+        // Native Android akışı /api/v2/auth/google?platform=native ile başladıysa
+        // state='native' burada aynen geri gelir. Bu durumda kullanıcıyı düz bir
+        // https sayfasına değil (o zaman Chrome/Custom Tab içinde mahsur kalır,
+        // bkz. bug raporu), uygulamanın AndroidManifest'te tanımlı custom scheme
+        // intent-filter'ının yakalayacağı bir deep link'e yönlendiriyoruz. Gerçek
+        // JWT'yi deep link'e koymuyoruz (custom scheme başka bir uygulama
+        // tarafından da talep edilebilir, bkz. createGoogleNativeExchangeCode
+        // üzerindeki not) - tek kullanımlık bir değişim kodu koyup native taraf
+        // bunu HTTPS üzerinden /api/v2/auth/exchange'e POST ederek gerçek token'ı
+        // alıyor.
+        if (req.query.state === 'native') {
+            const exchangeCode = createGoogleNativeExchangeCode(token);
+            return res.redirect(`adimkasasi://auth-callback?code=${encodeURIComponent(exchangeCode)}`);
+        }
+
         res.redirect(`/dashboard.html?token=${encodeURIComponent(token)}`);
     } catch (err) {
         console.error('Google OAuth callback hatası:', err.message);
-        res.redirect('/index.html?googleError=1');
+        googleAuthFailRedirect(req, res);
     }
+});
+
+// Native Android akışının tek kullanımlık değişim kodunu gerçek JWT ile
+// değiştirdiği uç nokta. Kod bulunduğunda hemen silinir (tek kullanımlık) ve
+// süresi geçmişse (60sn) 400 döner.
+app.post('/api/v2/auth/exchange', (req, res) => {
+    const { code } = req.body || {};
+    if (!code || typeof code !== 'string') return res.status(400).json({ error: 'Kod eksik.' });
+
+    const entry = googleNativeExchangeCodes.get(code);
+    googleNativeExchangeCodes.delete(code); // tek kullanımlık: bulunsa da bulunmasa da sil
+
+    if (!entry || entry.expiresAt < Date.now()) {
+        return res.status(400).json({ error: 'Kod geçersiz veya süresi dolmuş.' });
+    }
+
+    res.json({ token: entry.token });
 });
 
 app.get('/api/v2/user/me', authMiddleware, async (req, res) => {

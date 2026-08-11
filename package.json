@@ -11,6 +11,8 @@
   "license": "ISC",
   "dependencies": {
     "@capacitor/android": "^8.5.0",
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/browser": "^8.0.4",
     "@capacitor/core": "^8.5.0",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
