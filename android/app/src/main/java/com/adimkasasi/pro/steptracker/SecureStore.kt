@@ -7,7 +7,7 @@ import androidx.security.crypto.MasterKey
 
 /**
  * Encrypted, process-wide store for the cached auth token, the service "running" flag,
- * and the per-user cumulative/pending step counters used by [StepTrackerService].
+ * and the per-user pending (not-yet-synced-to-server) step count used by [StepTrackerService].
  *
  * Backed by [EncryptedSharedPreferences] so the JWT never sits in plaintext on disk.
  * The underlying [SharedPreferences] instance is built once (Keystore init isn't free)
@@ -19,11 +19,7 @@ object SecureStore {
     private const val KEY_TOKEN = "auth_token"
     private const val KEY_RUNNING = "service_running"
     private const val KEY_BATTERY_OPT_ASKED = "battery_opt_asked"
-    private const val LAST_CUMULATIVE_PREFIX = "last_cumulative_"
     private const val PENDING_DELTA_PREFIX = "pending_delta_"
-
-    /** Sentinel meaning "no baseline recorded yet for this user". */
-    const val NO_BASELINE = -1L
 
     @Volatile
     private var prefs: SharedPreferences? = null
@@ -72,9 +68,6 @@ object SecureStore {
         get(context).edit().putBoolean(KEY_BATTERY_OPT_ASKED, asked).apply()
     }
 
-    fun getLastCumulative(context: Context, userId: String): Long =
-        get(context).getLong(LAST_CUMULATIVE_PREFIX + userId, NO_BASELINE)
-
     fun getPendingDelta(context: Context, userId: String): Long =
         get(context).getLong(PENDING_DELTA_PREFIX + userId, 0L)
 
@@ -90,48 +83,29 @@ object SecureStore {
     private val pendingDeltaLock = Any()
 
     /**
-     * Atomically folds one sensor reading into the persisted state: updates the
-     * cumulative baseline and adds the resulting delta (handling the device-reboot
-     * case, where the raw sensor value resets to 0) to pendingDelta in a single
-     * locked read-modify-write. Returns the new pendingDelta.
+     * Atomically adds [amount] (normally 1, one per TYPE_STEP_DETECTOR event - see
+     * StepTrackerService) to the persisted pendingDelta. Returns the new pendingDelta.
+     *
+     * Replaces the old TYPE_STEP_COUNTER-era `applySensorReading(context, userId,
+     * newCumulative)`, which diffed a cumulative since-boot value against a stored
+     * baseline (with reboot-reset handling). TYPE_STEP_DETECTOR has no cumulative value
+     * and nothing to reset - each callback is simply "+1 step, right now" - so there is
+     * no baseline left to maintain; this is a plain atomic increment under the same lock
+     * [decrementPendingDelta] uses, for the same lost-update reason described above.
      */
-    fun applySensorReading(context: Context, userId: String, newCumulative: Long): Long {
+    fun incrementPendingDelta(context: Context, userId: String, amount: Long): Long {
         synchronized(pendingDeltaLock) {
             val prefs = get(context)
-            val lastCumulative = prefs.getLong(LAST_CUMULATIVE_PREFIX + userId, NO_BASELINE)
-            val currentPending = prefs.getLong(PENDING_DELTA_PREFIX + userId, 0L)
-
-            if (lastCumulative == NO_BASELINE) {
-                // First-ever reading for this user: establish baseline only, don't
-                // credit "all steps since last reboot" retroactively.
-                //
-                // Bug-fix (ANR risk): these writes used .commit() (synchronous, blocks
-                // until the encrypted value hits disk) while HOLDING pendingDeltaLock.
-                // That lock is also taken from onSensorChanged on the MAIN thread - so
-                // a sensor event landing while the background sync coroutine was
-                // mid-commit() blocked the main thread on disk I/O it doesn't own, on
-                // every single step. .apply() updates the in-memory SharedPreferences
-                // map synchronously (so the very next getLong() inside this same lock,
-                // from either thread, still sees the new value - the atomicity this
-                // lock exists for is unaffected) and only defers the disk fsync.
-                prefs.edit().putLong(LAST_CUMULATIVE_PREFIX + userId, newCumulative).apply()
-                return currentPending
-            }
-
-            val delta = if (newCumulative < lastCumulative) newCumulative else (newCumulative - lastCumulative)
-            val updatedPending = currentPending + delta
-            prefs.edit()
-                .putLong(LAST_CUMULATIVE_PREFIX + userId, newCumulative)
-                .putLong(PENDING_DELTA_PREFIX + userId, updatedPending)
-                .apply()
-            return updatedPending
+            val updated = prefs.getLong(PENDING_DELTA_PREFIX + userId, 0L) + amount
+            prefs.edit().putLong(PENDING_DELTA_PREFIX + userId, updated).apply()
+            return updated
         }
     }
 
     /**
      * Atomically subtracts [amount] from pendingDelta (called right after a chunk
      * sync succeeds) - re-reads the current persisted value under the same lock as
-     * [applySensorReading] rather than trusting a caller-supplied snapshot. Returns
+     * [incrementPendingDelta] rather than trusting a caller-supplied snapshot. Returns
      * the new pendingDelta.
      */
     fun decrementPendingDelta(context: Context, userId: String, amount: Long): Long {

@@ -49,6 +49,62 @@ private const val ALIAS_NOTIF = "notifications"
 )
 class StepTrackerPlugin : Plugin() {
 
+    // Kept alongside (not just assigned into) StepTrackerService's static callback slots
+    // so handleOnDestroy() can tell whether THIS instance's listener is still the one
+    // installed there before clearing it - see handleOnDestroy() for why that guard
+    // matters. Plain instance fields, no synchronization needed: both load() and
+    // handleOnDestroy() are Capacitor Bridge lifecycle calls on the main thread.
+    private var ownPendingStepListener: ((Long) -> Unit)? = null
+    private var ownSyncedListener: ((Long) -> Unit)? = null
+
+    /**
+     * Wires StepTrackerService's in-process callbacks (see its companion object docs) to
+     * this plugin instance's notifyListeners, so JS can subscribe via
+     * `StepTracker.addListener('stepUpdate', ...)` / `addListener('stepsSynced', ...)`
+     * for live per-step UI feedback without waiting for an actual server sync. load()
+     * runs once when the Capacitor bridge instantiates this plugin - i.e. on every fresh
+     * page load/app start - which is also exactly when JS needs to (re-)subscribe,
+     * including the case where the foreground service was already running in the
+     * background from a previous session.
+     */
+    override fun load() {
+        super.load()
+
+        val pendingListener: (Long) -> Unit = { pendingSteps ->
+            val data = JSObject()
+            data.put("pendingSteps", pendingSteps)
+            notifyListeners("stepUpdate", data)
+        }
+        val syncedListener: (Long) -> Unit = { synced ->
+            val data = JSObject()
+            data.put("synced", synced)
+            notifyListeners("stepsSynced", data)
+        }
+
+        ownPendingStepListener = pendingListener
+        ownSyncedListener = syncedListener
+        StepTrackerService.pendingStepListener = pendingListener
+        StepTrackerService.syncedListener = syncedListener
+    }
+
+    override fun handleOnDestroy() {
+        // Bug-fix: this used to unconditionally null StepTrackerService's static
+        // callback slots. That's only safe because MainActivity is currently
+        // launchMode="singleTask" (at most one live Activity/Bridge/Plugin instance
+        // ever exists) - if that ever changed, an OLD instance's teardown could null out
+        // a NEWER instance's still-live listener, silently and permanently killing live
+        // feedback for the rest of the process's life (nothing would ever re-set it,
+        // since load() only runs once per instance). Guarding on referential identity
+        // costs nothing and removes the dependency on that launchMode assumption.
+        if (StepTrackerService.pendingStepListener === ownPendingStepListener) {
+            StepTrackerService.pendingStepListener = null
+        }
+        if (StepTrackerService.syncedListener === ownSyncedListener) {
+            StepTrackerService.syncedListener = null
+        }
+        super.handleOnDestroy()
+    }
+
     @PluginMethod
     fun start(call: PluginCall) {
         val token = call.getString("token")
@@ -59,7 +115,7 @@ class StepTrackerPlugin : Plugin() {
 
         // Bug-fix: previously the service would still start foreground (persistent
         // "counting your steps" notification + "active" UI) on a device with no
-        // TYPE_STEP_COUNTER hardware, register no listener, and silently record zero
+        // TYPE_STEP_DETECTOR hardware, register no listener, and silently record zero
         // steps forever with nothing anywhere distinguishing that from working
         // correctly. Reject explicitly instead so JS can show an honest message.
         if (!hasStepSensor(context)) {
@@ -102,11 +158,11 @@ class StepTrackerPlugin : Plugin() {
         }
         ContextCompat.startForegroundService(ctx, intent)
 
-        // Correct foreground-service usage + TYPE_STEP_COUNTER is already Doze-exempt on
-        // stock Android, but Xiaomi/HyperOS layers its own, much more aggressive battery
-        // manager on top that kills foreground services anyway unless the app is
-        // explicitly whitelisted. This is the standard (if HyperOS-incomplete) mitigation:
-        // ask the user, once, right when they turn tracking on.
+        // Correct foreground-service usage is already Doze-exempt on stock Android, but
+        // Xiaomi/HyperOS layers its own, much more aggressive battery manager on top that
+        // kills foreground services anyway unless the app is explicitly whitelisted. This
+        // is the standard (if HyperOS-incomplete) mitigation: ask the user, once, right
+        // when they turn tracking on.
         maybeRequestBatteryOptimizationExemption(ctx)
 
         val ret = JSObject()
@@ -208,10 +264,16 @@ class StepTrackerPlugin : Plugin() {
         call.resolve(ret)
     }
 
-    /** True if this device has TYPE_STEP_COUNTER hardware at all - independent of permissions. */
+    /**
+     * True if this device has TYPE_STEP_DETECTOR hardware at all - independent of
+     * permissions. Checks the same sensor type StepTrackerService actually registers a
+     * listener for (see its onCreate() for why TYPE_STEP_COUNTER was replaced with
+     * TYPE_STEP_DETECTOR) - mirroring StepTrackerService's own null-safety for devices
+     * that lack the sensor entirely, same as before.
+     */
     private fun hasStepSensor(ctx: Context): Boolean {
         val manager = ctx.getSystemService(Context.SENSOR_SERVICE) as? SensorManager ?: return false
-        return manager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER) != null
+        return manager.getDefaultSensor(Sensor.TYPE_STEP_DETECTOR) != null
     }
 
     /**

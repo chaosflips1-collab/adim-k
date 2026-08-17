@@ -657,6 +657,43 @@
         // yoksa mevcut devicemotion tabanlı web yolu mu kullanılacağını belirler.
         const isNativeAndroid = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform() && window.Capacitor.getPlatform && window.Capacitor.getPlatform() === 'android');
 
+        // Native Android canlı adım geri bildirimi: StepTrackerService her adımda
+        // (throttled) bir 'stepUpdate' olayı yayınlar - amacı, gerçek sunucu senkronu
+        // (3 dakikada bir / 500 adımda bir) beklemeden ekrandaki "dönüştürülmemiş adım"
+        // sayısının anında artması. nativeUnconvertedBase = en son bilinen SUNUCU
+        // toplamı, nativePendingStepsAddOn = native tarafın bildirdiği, henüz sunucuya
+        // senkron OLMAMIŞ mutlak adım sayısı. Gösterilen değer ikisinin toplamı.
+        //
+        // Bug-fix (geriye doğru sıçrama): base SADECE updateUI(u) her çalıştığında
+        // (sayfa yüklemesi + belirli kullanıcı aksiyonları, PERİYODİK bir polling YOK -
+        // grep ile doğrulandı) güncelleniyordu ve addon her updateUI'da 0'a
+        // sıfırlanıyordu. dashboard.html'de periyodik fetch olmadığı için yürüyüş
+        // sırasında base sayfa-yüklemesi değerinde donuk kalırken addon 500'e kadar
+        // tırmanıyor (gösterilen ≈ base+499), arka planda bir senkron başarılı olup
+        // native'in pending'i küçük bir mutlak değere (örn. 2) düşünce bir sonraki
+        // 'stepUpdate' addon'u anında 499'dan 2'ye ÇEKİYOR ve ekran ~497 adım GERİYE
+        // sıçrıyordu - N senkron döngüsünde N×500'e kadar katlanabilen bir hata.
+        //
+        // Düzeltme: native artık her başarılı chunk senkronunda ayrı bir 'stepsSynced'
+        // olayı (senkronlanan gerçek miktar N ile) yayınlıyor (bkz. StepTrackerService.
+        // performSync()'in SyncResult.OK dalı). Bu olayı gördüğümüzde base'i N kadar
+        // İLERİ taşıyoruz VE addon'dan da aynı N'i (0'ın altına inmeyecek şekilde)
+        // düşüyoruz - böylece toplam (base+addon) senkron anında sabit kalır, sıçrama
+        // olmaz. addon'daki küçük kalan fark (senkron sırasında native'e düşen birkaç
+        // yeni adım) sadece bir sonraki gerçek 'stepUpdate' ile küçük, fark
+        // edilmeyecek bir düzeltmeyle kapanır - asla onlarca/yüzlerce adımlık bir
+        // sıçrama değil. updateUI(u) artık addon'u SIFIRLAMIYOR (aşağıya bakın) -
+        // addon'un tek kaynağı 'stepUpdate' (mutlak atama) ve 'stepsSynced' (mutlak
+        // atamayı N kadar ileri taşıma) olayları.
+        let nativeUnconvertedBase = 0;
+        let nativePendingStepsAddOn = 0;
+
+        function renderNativeUnconvertedSteps() {
+            if (!isNativeAndroid) return;
+            const el = document.getElementById('unconvertedSteps');
+            if (el) el.textContent = (nativeUnconvertedBase + nativePendingStepsAddOn).toLocaleString('tr-TR');
+        }
+
         // Kullanıcı adı gibi kullanıcı tarafından belirlenebilen alanlar kaçışsız
         // innerHTML'e basılırsa saklı (stored) XSS oluşur; liderlik tablosu herkese
         // görünür olduğu için kötü niyetli bir isimle kayıt olan biri tüm
@@ -708,6 +745,19 @@
             document.getElementById('streakVal').textContent = u.streak || 1;
             document.getElementById('totalSteps').textContent = u.steps.toLocaleString('tr-TR');
             document.getElementById('unconvertedSteps').textContent = u.unconvertedSteps.toLocaleString('tr-TR');
+
+            // Native Android: sunucudan taze bir toplam geldi (sayfa yüklemesi veya bir
+            // kullanıcı aksiyonu sonrası - bkz. bu değişkenlerin tanımındaki yorum
+            // bloğu). SADECE base'i bu yeni sunucu değerine güncelliyoruz; addon'u
+            // ARTIK burada sıfırlamıyoruz - addon'un tek doğru kaynağı native'in kendi
+            // 'stepUpdate'/'stepsSynced' olayları (bkz. yukarıdaki bug-fix notu). Bu
+            // fetch'in nedeni bir "adım dönüştürme" gibi bir aksiyon olsa bile, addon
+            // sadece HENÜZ sunucuya hiç ulaşmamış native-yerel adımları temsil ediyor -
+            // o aksiyon onları zaten değiştirmiş/dönüştürmüş olamaz.
+            if (isNativeAndroid) {
+                nativeUnconvertedBase = u.unconvertedSteps;
+                renderNativeUnconvertedSteps();
+            }
             document.getElementById('userPoints').textContent = `${(u.points || 0).toFixed(2)} YP`;
             document.getElementById('userCalories').textContent = `${(u.calories || 0).toFixed(1)} kcal`;
             document.getElementById('statLevel').textContent = `Lv. ${u.level || 1}`;
@@ -2214,6 +2264,29 @@
         // yeniden yüklenmiş olsa bile native foreground service arka planda hâlâ
         // çalışıyor olabilir, bu durumda buton yanlışlıkla "başlat" görünmemeli.
         if (isNativeAndroid) {
+            // Anlık adım geri bildirimi: native taraf onSensorChanged'de (throttled,
+            // en fazla saniyede bir) bu olayı yayınlıyor. Burada bir kez abone oluyoruz
+            // (start()'a değil sayfa yüklemesine bağlı) çünkü arka plan servisi önceki
+            // oturumdan hâlâ çalışıyor olabilir - o durumda da olaylar akmaya devam eder.
+            window.Capacitor.Plugins.StepTracker.addListener('stepUpdate', (data) => {
+                nativePendingStepsAddOn = (data && data.pendingSteps) || 0;
+                renderNativeUnconvertedSteps();
+            });
+
+            // Bir chunk sunucuya başarıyla senkronlandığında native taraf bunu ayrı
+            // olarak bildirir (senkronlanan gerçek miktar N). base'i N kadar ileri
+            // taşıyıp addon'dan da aynı N'i düşerek (0'ın altına inmeden) toplamı
+            // (base+addon) bu anda SABİT tutuyoruz - geriye sıçrama burada engelleniyor.
+            // Kalan küçük fark (senkron sırasında native'e düşen birkaç yeni adım)
+            // sadece bir sonraki 'stepUpdate' ile ufak, fark edilmeyecek şekilde düzelir.
+            window.Capacitor.Plugins.StepTracker.addListener('stepsSynced', (data) => {
+                const synced = (data && data.synced) || 0;
+                if (synced <= 0) return;
+                nativeUnconvertedBase += synced;
+                nativePendingStepsAddOn = Math.max(0, nativePendingStepsAddOn - synced);
+                renderNativeUnconvertedSteps();
+            });
+
             window.Capacitor.Plugins.StepTracker.refreshToken({ token }).catch(() => {});
             window.Capacitor.Plugins.StepTracker.getStatus().then((status) => {
                 if (status && status.running) {

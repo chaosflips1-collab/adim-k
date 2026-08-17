@@ -13,7 +13,9 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.adimkasasi.pro.R
@@ -71,6 +73,19 @@ class StepTrackerService : Service(), SensorEventListener {
     private var cachedToken: String? = null
     private var authPaused = false
 
+    // Leading-edge throttle for pendingStepListener notifications: at most one JS-bridge
+    // crossing per NOTIFY_THROTTLE_MS, not one per single sensor callback, since fast
+    // walking can fire onSensorChanged multiple times a second and there's no need for
+    // the UI to redraw that often. First event after a quiet period notifies immediately
+    // (not delayed to the next tick), so the "instant feedback" ask still feels instant.
+    // A trailing-edge flush (see notifyPendingStepListener) makes sure a value suppressed
+    // by this throttle still reaches JS even if the user stops walking right after -
+    // otherwise the UI could sit stale indefinitely (up to NOTIFY_THROTTLE_MS forever,
+    // not just once).
+    private var lastNotifyMs = 0L
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var trailingFlushRunnable: Runnable? = null
+
     private val httpClient: OkHttpClient by lazy {
         OkHttpClient.Builder().build()
     }
@@ -78,7 +93,19 @@ class StepTrackerService : Service(), SensorEventListener {
     override fun onCreate() {
         super.onCreate()
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
-        stepSensor = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
+        // Bug-fix: TYPE_STEP_COUNTER (cumulative since-boot count) was confirmed via
+        // on-device `adb shell dumpsys sensorservice` (Redmi Note 14 Pro / HyperOS /
+        // MediaTek) to simply stop delivering events to ANY registered listener for
+        // 40+ minutes while the user was actively walking - not just our listener,
+        // every listener on that sensor handle, including com.miui.server.stepcounter
+        // and Health Connect's own. TYPE_STEP_DETECTOR (fires once per detected step,
+        // no cumulative value) fired live, on-time events during the same walk test.
+        // This is a known class of OEM/firmware issue - some vendors batch/throttle
+        // TYPE_STEP_COUNTER unpredictably, which is why TYPE_STEP_DETECTOR is the
+        // generally-recommended primitive for reliable pedometer apps. Same
+        // ACTIVITY_RECOGNITION permission covers both (confirmed in the same dump),
+        // so no manifest/permission-flow change was needed for this switch.
+        stepSensor = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_DETECTOR)
         createNotificationChannel()
     }
 
@@ -115,6 +142,8 @@ class StepTrackerService : Service(), SensorEventListener {
             sensorManager.unregisterListener(this)
             listenerRegistered = false
         }
+        trailingFlushRunnable?.let { mainHandler.removeCallbacks(it) }
+        trailingFlushRunnable = null
         SecureStore.setRunning(this, false)
         serviceScope.cancel()
         super.onDestroy()
@@ -194,7 +223,7 @@ class StepTrackerService : Service(), SensorEventListener {
     // ---- Sensor -----------------------------------------------------------------------
 
     override fun onSensorChanged(event: SensorEvent) {
-        if (event.sensor.type != Sensor.TYPE_STEP_COUNTER) return
+        if (event.sensor.type != Sensor.TYPE_STEP_DETECTOR) return
         val userId = currentUserId ?: return
 
         // Bug-fix: this runs synchronously on the main thread (registerListener was
@@ -204,23 +233,98 @@ class StepTrackerService : Service(), SensorEventListener {
         // throw for real (see its own docs/known issues); an uncaught exception here
         // would crash the entire app, not just this service, on every single step.
         try {
-            val newCumulative = event.values[0].toLong()
-            // Baseline update + pending-delta increment (incl. reboot detection) happen
-            // atomically inside SecureStore, under the same lock performSync's decrement
-            // uses - see the comment on SecureStore.pendingDeltaLock for why this can't
-            // just be a local read-modify-write here.
-            val updatedPending = SecureStore.applySensorReading(this, userId, newCumulative)
+            // TYPE_STEP_DETECTOR has no cumulative value - the Android platform
+            // contract is that event.values[0] is always 1.0f, one callback per
+            // detected step. We deliberately don't read event.values at all here
+            // (rather than trusting an OEM to have put a sane number in it) and just
+            // count each callback as exactly one step. There's no baseline/reboot
+            // bookkeeping needed anymore (see SecureStore.incrementPendingDelta docs) -
+            // each event is self-contained.
+            val updatedPending = SecureStore.incrementPendingDelta(this, userId, 1L)
 
             if (updatedPending >= EARLY_FLUSH_THRESHOLD) {
                 triggerSync()
             }
+
+            notifyPendingStepListener(updatedPending)
         } catch (e: Exception) {
             Log.e("StepTrackerService", "onSensorChanged hatası (yut, çökme yok)", e)
         }
     }
 
+    /**
+     * Pushes the current (absolute, not-yet-synced) pending step count to whichever
+     * StepTrackerPlugin instance is listening, so the JS/UI layer can show live feedback
+     * per step instead of waiting up to SYNC_INTERVAL_MS for an actual server sync.
+     * Purely a UI nicety - does not touch sync cadence/batching, which is unchanged.
+     *
+     * `pendingStepListener` is a plain in-process callback (see companion object) rather
+     * than a bound Service/AIDL/broadcast: this Service and the Plugin instance always
+     * run in the same process (no android:process split in the manifest), so a static
+     * reference is the lightest correct option - notifyListeners() itself lives on
+     * Capacitor's Plugin base class and can't be called directly from a Service.
+     */
+    private fun notifyPendingStepListener(pending: Long) {
+        val now = System.currentTimeMillis()
+
+        // Any previously-scheduled trailing flush is now superseded by this call - either
+        // this call delivers immediately (leading edge) or schedules a fresh trailing
+        // flush with the latest value, so the old one (with a stale `pending`) must not
+        // fire on its own later.
+        trailingFlushRunnable?.let { mainHandler.removeCallbacks(it) }
+        trailingFlushRunnable = null
+
+        if (now - lastNotifyMs >= NOTIFY_THROTTLE_MS) {
+            lastNotifyMs = now
+            deliverPendingStepUpdate(pending)
+            return
+        }
+
+        // Suppressed by the throttle - schedule a trailing-edge delivery for whenever the
+        // window ends, so this (possibly final, if the user stops walking right here)
+        // value doesn't get lost. If another step arrives before then, this gets
+        // cancelled and replaced by that call's own scheduling/delivery above.
+        val delayMs = (NOTIFY_THROTTLE_MS - (now - lastNotifyMs)).coerceAtLeast(0)
+        val runnable = Runnable {
+            lastNotifyMs = System.currentTimeMillis()
+            trailingFlushRunnable = null
+            deliverPendingStepUpdate(pending)
+        }
+        trailingFlushRunnable = runnable
+        mainHandler.postDelayed(runnable, delayMs)
+    }
+
+    private fun deliverPendingStepUpdate(pending: Long) {
+        try {
+            pendingStepListener?.invoke(pending)
+        } catch (e: Exception) {
+            // A misbehaving JS-side listener must never take the sensor callback down
+            // with it - this is a nice-to-have UI push, not a critical path.
+            Log.e("StepTrackerService", "pendingStepListener hatası (yut, çökme yok)", e)
+        }
+    }
+
+    /**
+     * Pushes the amount of a chunk that was just confirmed synced by the server, so JS
+     * can advance its local "server-confirmed" base forward by exactly that amount
+     * instead of relying on the next (much smaller) pendingStepListener value to imply a
+     * sync happened - which without this event looks indistinguishable from "the counter
+     * jumped backward" client-side. See performSync()'s SyncResult.OK branch for the call
+     * site (the actual point a chunk is confirmed, not an estimate). Unlike
+     * notifyPendingStepListener this isn't throttled: a successful chunk sync only
+     * happens at most every EARLY_FLUSH_THRESHOLD steps or SYNC_INTERVAL_MS, already a
+     * low-frequency event with no chatter concern.
+     */
+    private fun notifySyncedListener(amount: Long) {
+        try {
+            syncedListener?.invoke(amount)
+        } catch (e: Exception) {
+            Log.e("StepTrackerService", "syncedListener hatası (yut, çökme yok)", e)
+        }
+    }
+
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
-        // No-op: cumulative step counter accuracy changes aren't actionable here.
+        // No-op: step detector accuracy changes aren't actionable here.
     }
 
     // ---- Sync ---------------------------------------------------------------------------
@@ -255,6 +359,11 @@ class StepTrackerService : Service(), SensorEventListener {
                     // trusting this loop's local `pending` snapshot, so a sensor event
                     // that landed while the chunk POST was in flight isn't lost.
                     pending = SecureStore.decrementPendingDelta(this, userId, chunk)
+                    // Tell JS exactly how much just got confirmed server-side, using the
+                    // real synced amount (chunk) - not the new pending total - so it can
+                    // advance its local base forward rather than infer a sync happened
+                    // from pendingStepListener's next (smaller) value alone.
+                    notifySyncedListener(chunk)
                 }
                 SyncResult.UNAUTHORIZED -> {
                     authPaused = true
@@ -353,6 +462,26 @@ class StepTrackerService : Service(), SensorEventListener {
         private const val SYNC_INTERVAL_MS = 3 * 60 * 1000L
         private const val EARLY_FLUSH_THRESHOLD = 500L
         private const val MAX_CHUNK_AMOUNT = 2000L
+        private const val NOTIFY_THROTTLE_MS = 1000L
+
+        /**
+         * Set by StepTrackerPlugin.load() to receive live "pending step count changed"
+         * pushes for forwarding to JS via notifyListeners("stepUpdate", ...), and cleared
+         * in its handleOnDestroy(). Nullable/best-effort by design: if no plugin instance
+         * is currently listening (e.g. WebView not yet loaded), steps are still tracked
+         * and synced correctly - this callback is purely a live-UI nicety layered on top,
+         * never a dependency of the actual counting/sync path.
+         */
+        var pendingStepListener: ((pendingSteps: Long) -> Unit)? = null
+
+        /**
+         * Set by StepTrackerPlugin.load() to receive "a chunk of N steps was just
+         * confirmed synced by the server" pushes, forwarded to JS as the 'stepsSynced'
+         * event. Same in-process-callback rationale as [pendingStepListener]. Cleared in
+         * handleOnDestroy() - see that method's own doc for why the clear is now
+         * ownership-guarded rather than unconditional.
+         */
+        var syncedListener: ((synced: Long) -> Unit)? = null
 
         private const val TEXT_NORMAL = "AdımKasası adımlarınızı sayıyor 👟"
         private const val TEXT_PAUSED = "Oturum süresi doldu, senkron duraklatıldı — uygulamayı açın"
