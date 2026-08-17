@@ -309,10 +309,10 @@
                         <div class="cap-bar"><div class="cap-fill" id="capFill"></div></div>
                     </div>
 
-                    <div style="margin-top: 8px; font-size: 11px; color: #f472b6;">
-                        <input type="checkbox" id="doubleToggle">
-                        <label for="doubleToggle" style="font-weight: 600;">🎬 Sponsorlu 2x Bonus</label>
-                    </div>
+                    <label style="margin-top: 8px; font-size: 11px; color: #f472b6; display:flex; align-items:center; gap:8px; padding:8px 4px; cursor:pointer;">
+                        <input type="checkbox" id="doubleToggle" style="width:20px; height:20px; flex-shrink:0;">
+                        <span style="font-weight: 600;">🎬 Sponsorlu 2x Bonus</span>
+                    </label>
 
                     <div class="m-btn-row">
                         <button class="m-btn m-btn-gold" style="width:100%;" onclick="openWheelModal()">🎡 Şans Çarkı</button>
@@ -520,7 +520,11 @@
         <div class="modal-card">
             <h3>🎡 Günlük Şans Çarkı</h3>
             <div id="wheelSpinner" style="font-size:60px; margin:10px 0; transition: transform 3s ease;">🎡</div>
-            <button class="m-btn m-btn-gold" style="width:100%; font-size:13px;" id="spinBtn" onclick="spinWheel()">ÇARKI ÇEVİR</button>
+            <div id="wheelAdCountdown" class="hidden" style="background:rgba(255,255,255,0.06); border-radius:16px; padding:14px; margin-bottom:12px;">
+                <p style="font-size:11px; color:#94a3b8; margin-bottom:6px;">🎬 Ödüllü sponsorlu reklam oynatılıyor...</p>
+                <div style="font-size:24px; font-weight:800; color:#fbbf24;" id="wheelAdTimer">5</div>
+            </div>
+            <button class="m-btn m-btn-gold" style="width:100%; font-size:13px;" id="spinBtn" onclick="startWheelSpin()">🎬 Reklamı İzle & Çarkı Çevir</button>
             <button class="m-btn m-btn-secondary" style="width:100%; margin-top:6px; font-size:11px;" onclick="closeWheelModal()">Kapat</button>
         </div>
     </div>
@@ -950,8 +954,37 @@
             } catch (err) {}
         }
 
-        function openWheelModal() { document.getElementById('wheelModal').classList.remove('hidden'); }
+        function openWheelModal() {
+            document.getElementById('wheelModal').classList.remove('hidden');
+            document.getElementById('wheelAdCountdown').classList.add('hidden');
+            document.getElementById('spinBtn').disabled = false;
+            document.getElementById('spinBtn').textContent = '🎬 Reklamı İzle & Çarkı Çevir';
+        }
         function closeWheelModal() { document.getElementById('wheelModal').classList.add('hidden'); }
+
+        // Günlük Şans Çarkı: sunucu zaten günde 1 hakla sınırlıyor
+        // (lastWheelSpinDate != today koşulu, bkz. server.js /api/v2/wheel/spin) -
+        // ikinci bir çevirme isteği zaten reddedilir. Burada eklenen, çevirmeden
+        // ÖNCE 5sn'lik simüle sponsorlu reklam akışı (2x Bonus'takiyle aynı desen) -
+        // reklam bitmeden asıl /wheel/spin isteği hiç atılmaz.
+        function startWheelSpin() {
+            const btn = document.getElementById('spinBtn');
+            const countdown = document.getElementById('wheelAdCountdown');
+            const timerEl = document.getElementById('wheelAdTimer');
+            btn.disabled = true;
+            countdown.classList.remove('hidden');
+            let count = 5;
+            timerEl.textContent = count;
+            const timer = setInterval(() => {
+                count--;
+                timerEl.textContent = count;
+                if (count <= 0) {
+                    clearInterval(timer);
+                    countdown.classList.add('hidden');
+                    spinWheel();
+                }
+            }, 1000);
+        }
 
         async function spinWheel() {
             const sp = document.getElementById('wheelSpinner');

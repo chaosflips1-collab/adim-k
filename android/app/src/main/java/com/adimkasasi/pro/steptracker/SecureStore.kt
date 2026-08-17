@@ -30,7 +30,26 @@ object SecureStore {
         }
     }
 
+    // Bug-fix (crash on every launch after reinstall/device restore): the manifest has
+    // allowBackup="true", so Android's auto backup can restore this file's raw bytes
+    // (previous install, new device, etc.) while the AndroidKeystore master key that
+    // encrypted it is hardware-bound and never comes along - keys and file are backed
+    // up/restored independently. The restored file's Tink keyset then fails to decrypt
+    // against the (new) local key with AEADBadTagException, and every SecureStore call
+    // (e.g. saveToken right after login) crashes the app immediately. Recovered by
+    // wiping the corrupt file and creating a fresh one on the first failure - this only
+    // loses the cached token/pending step count, which the app already tolerates (it
+    // just asks the user to log in again / catches up on the next sync).
     private fun build(context: Context): SharedPreferences {
+        return try {
+            createEncryptedPrefs(context)
+        } catch (e: Exception) {
+            context.deleteSharedPreferences(PREFS_NAME)
+            createEncryptedPrefs(context)
+        }
+    }
+
+    private fun createEncryptedPrefs(context: Context): SharedPreferences {
         val masterKey = MasterKey.Builder(context)
             .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
             .build()
