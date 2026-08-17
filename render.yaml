@@ -5,7 +5,21 @@ services:
     buildCommand: npm install
     startCommand: node server.js
     envVars:
+      # Değerler artık burada DEĞİL - Render Dashboard > Environment üzerinden
+      # elle girilir (sync: false). Daha önce burada düz metin olarak duran
+      # MongoDB Atlas şifresi ve JWT_SECRET git geçmişine işlenmişti; bu
+      # değerlerin rotasyona sokulması (yeni şifre/secret üretip Atlas ve
+      # Render tarafında güncellemek) gerekiyor - bkz. Obsidian "Önemli
+      # Yapılacaklar" notu, bu repo bunu otomatik yapamaz.
       - key: MONGO_URI
-        value: mongodb+srv://Adimkasasi:112233Okan@cluster0.g6ldbkz.mongodb.net/adimkasasi_v2?retryWrites=true&w=majority
+        sync: false
       - key: JWT_SECRET
-        value: adimkasasi_pro_v2_secret_key_2026_super_secure
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_CALLBACK_URL
+        sync: false
+      - key: ALLOWED_ORIGIN
+        sync: false
