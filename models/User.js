@@ -77,7 +77,26 @@ const UserSchema = new mongoose.Schema({
     // istemcinin bildirdiği durationMs artık güvenilmez; oyun süresi bu
     // sunucu-taraflı zaman damgasından hesaplanır ve ödül talebinde atomik
     // olarak temizlenir (aynı oturumun iki kez talep edilmesini engeller).
-    gameSessionStart: { type: Date, default: null }
+    gameSessionStart: { type: Date, default: null },
+
+    // Premium abonelik: GERÇEK bir ödeme sağlayıcısı (iyzico/Stripe/Play Billing)
+    // henüz bağlı değil - bu alanlar şimdilik yalnızca admin'in elle
+    // (/api/v2/admin/premium/grant ile, ör. bir havale/manuel ödeme sonrası) premium
+    // verebilmesi ve premiumRequest ile "ilgi kaydı" tutabilmesi için var. Gerçek
+    // ödeme entegrasyonu geldiğinde webhook bu alanları set edecek şekilde
+    // genişletilebilir - şema/route iskeleti hazır, sadece sağlayıcı eksik.
+    isPremium: { type: Boolean, default: false },
+    premiumPlan: { type: String, default: null }, // 'monthly' | 'yearly'
+    premiumUntil: { type: Date, default: null },
+    premiumRequestedAt: { type: Date, default: null },
+    premiumRequestedPlan: { type: String, default: null },
+
+    // Ödül kodu teslimatı: dijital kodlar şu an sunucuda rastgele üretiliyor,
+    // gerçek bir tedarikçi (Steam/Spotify/Google Play vb.) entegrasyonu YOK -
+    // bkz. Claim modelindeki fulfillmentStatus alanı ve Obsidian notu.
+
+    // Bağış: gerçek kuruma para/mama transferi henüz otomatik değil - bkz.
+    // Donation modelindeki transferStatus alanı ve Obsidian notu.
 });
 
 module.exports = mongoose.model('User', UserSchema);

@@ -617,7 +617,8 @@
                 <div>✅ Öncelikli destek</div>
             </div>
 
-            <button class="m-btn m-btn-primary" style="width:100%; font-size:13px;" onclick="subscribeToPremium()">⭐ Abone Ol</button>
+            <button class="m-btn m-btn-primary" style="width:100%; font-size:13px;" onclick="subscribeToPremium()">⭐ İlgileniyorum, Haberdar Et</button>
+            <p style="font-size:10px; color:#94a3b8; margin-top:8px; text-align:center;">Ödeme altyapımız hazırlanıyor - şu an ücret alınmıyor.</p>
             <button class="m-btn m-btn-secondary" style="width:100%; margin-top:8px; font-size:11px;" onclick="closeModal('premiumModal')">Şimdi Değil</button>
         </div>
     </div>
@@ -904,8 +905,23 @@
             document.getElementById('premiumModal').classList.remove('hidden');
         }
 
-        function subscribeToPremium() {
-            showAlert('💡 Ödeme sistemi çok yakında aktif olacak! Şimdilik günlük limitin dolduğunda tekrar deneyebilirsin.');
+        async function subscribeToPremium() {
+            // NOT: Gerçek bir ödeme sağlayıcısı (iyzico/Stripe/Play Billing) henüz bağlı
+            // değil - bu istek para tahsil etmez, yalnızca "bu planı istiyorum" bilgisini
+            // sunucuda kaydeder (bkz. /api/v2/premium/subscribe-request, admin panelinden
+            // görülebilir). Ödeme altyapısı hazır olunca bu buton gerçek satın almaya
+            // bağlanacak.
+            try {
+                const res = await fetch('/api/v2/premium/subscribe-request', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ plan: selectedPremiumPlan })
+                });
+                const data = await res.json();
+                showAlert(data.message || data.error);
+            } catch (err) {
+                showAlert('İstek gönderilemedi, lütfen tekrar deneyin.');
+            }
             closeModal('premiumModal');
         }
 
@@ -952,7 +968,7 @@
 
         async function fetchLeaderboard() {
             try {
-                const res = await fetch('/api/v2/leaderboard');
+                const res = await fetch('/api/v2/leaderboard', { headers: { 'Authorization': `Bearer ${token}` } });
                 const data = await res.json();
                 const container = document.getElementById('leaderboardContainer');
                 container.innerHTML = '';

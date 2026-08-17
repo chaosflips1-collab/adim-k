@@ -1,6 +1,8 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
@@ -27,9 +29,51 @@ if (!googleClient) {
 }
 
 const app = express();
+app.set('trust proxy', 1); // Render bir reverse proxy arkasında - rate-limit'in gerçek istemci IP'sini görmesi için gerekli.
+app.use(helmet({
+    // CSP inline <script>/<style> kullanan mevcut public/ HTML'lerini (dashboard.html
+    // vb.) kırmamak için şimdilik kapalı - CSP'yi etkinleştirmek ayrı, HTML'lerin
+    // script/style'ını dışa taşımayı gerektiren bir iş (bkz. Obsidian notu).
+    contentSecurityPolicy: false
+}));
+
+// CORS artık her origin'e açık DEĞİL: yalnızca ALLOWED_ORIGIN ortam değişkeninde
+// tanımlı origin(ler)e (virgülle ayrılmış) izin verilir. Tanımlı değilse (yerel
+// geliştirme) tüm origin'lere izin vererek eski davranış korunur - üretimde
+// Render Dashboard'dan ALLOWED_ORIGIN ayarlanmalı (bkz. render.yaml).
+const allowedOrigins = (process.env.ALLOWED_ORIGIN || '').split(',').map(o => o.trim()).filter(Boolean);
+app.use(cors(allowedOrigins.length ? {
+    origin: (origin, callback) => {
+        // origin yoksa (native app / curl / Capacitor WebView bazı durumlarda Origin
+        // göndermez) reddetmiyoruz - aksi halde Android sarmalayıcı kırılırdı.
+        if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+        return callback(new Error('CORS: izin verilmeyen origin'));
+    }
+} : undefined));
+
 app.use(express.json());
-app.use(cors());
 app.use(express.static('public'));
+
+// Kaba kuvvet (brute-force) korunması: login/register üzerinde sıkı bir limit,
+// geri kalan API için daha gevşek genel bir limit. IP başına.
+const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 20,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Çok fazla deneme yapıldı. Lütfen 15 dakika sonra tekrar deneyin.' }
+});
+const apiLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    limit: 120,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Çok fazla istek gönderildi. Lütfen biraz yavaşlayın.' }
+});
+app.use('/api/v2/login', authLimiter);
+app.use('/api/v2/register', authLimiter);
+app.use('/api/v2/auth', authLimiter);
+app.use('/api/v2', apiLimiter);
 
 // Bağlantı dizesi yalnızca ortam değişkeninden okunur; kaynak kodda düz metin
 // kimlik bilgisi bulundurmayız (daha önce burada sabit kodlanmış bir şifre vardı
@@ -49,7 +93,12 @@ mongoose.connect(MONGO_URI)
 
 // Admin Yetki Kontrol Middleware
 async function adminMiddleware(req, res, next) {
-    if (!req.user || (req.user.role !== 'admin' && req.user.email !== 'admin@adimkasasi.com')) {
+    // Bug-fix: e-posta karşılaştırmalı fallback kaldırıldı - role='admin' TEK yetki
+    // kaynağı. Fallback, admin@adimkasasi.com adresli herhangi bir hesabın (rolü ne
+    // olursa olsun, ör. role hiç set edilmemişse) admin paneline girmesine izin
+    // veriyordu; tutarlılık ve tahmin edilebilirlik için gereksiz ikinci bir yol
+    // kaldırıldı.
+    if (!req.user || req.user.role !== 'admin') {
         return res.status(403).json({ error: "Bu alana sadece yönetici erişebilir!" });
     }
     next();
@@ -545,6 +594,49 @@ app.get('/api/v2/diet/get-plan', authMiddleware, async (req, res) => {
     }
 });
 
+// --- PREMIUM ABONELİK (backend iskeleti) ---
+// GERÇEK bir ödeme sağlayıcısı (iyzico/Stripe/Google Play Billing) henüz bağlı
+// değil - bkz. Obsidian "Önemli Yapılacaklar" notu. Bu üç uç nokta, sağlayıcı
+// bağlandığında minimum değişiklikle çalışacak şekilde tasarlandı: subscribe-request
+// bugün sadece "ilgi" kaydediyor (dürüst mesajla), status güncel durumu döndürüyor,
+// admin/premium/grant admin'in elle (ör. banka havalesi sonrası) premium
+// verebilmesini sağlıyor. steps/convert route'u zaten isPremium/premiumUntil'i
+// okuyup günlük limiti kaldırıyor ve 2x çarpanı uyguluyor (bkz. yukarıdaki route).
+
+app.get('/api/v2/premium/status', authMiddleware, async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id).select('isPremium premiumPlan premiumUntil premiumRequestedAt premiumRequestedPlan');
+        if (!user) return res.status(404).json({ error: "Kullanıcı bulunamadı." });
+        const isActive = !!(user.premiumUntil && new Date(user.premiumUntil) > new Date());
+        res.json({
+            isPremium: isActive,
+            premiumPlan: isActive ? user.premiumPlan : null,
+            premiumUntil: isActive ? user.premiumUntil : null,
+            premiumRequestedAt: user.premiumRequestedAt,
+            premiumRequestedPlan: user.premiumRequestedPlan
+        });
+    } catch (err) {
+        res.status(500).json({ error: "Premium durumu alınamadı." });
+    }
+});
+
+// "Abone Ol" butonu bugün gerçek para tahsil ETMİYOR (ödeme sağlayıcısı yok) -
+// yalnızca kullanıcının hangi planı istediğini kaydedip admin'e görünür kılıyor,
+// böylece talep ölçülebiliyor ve gerçek ödeme entegre edildiğinde bu kullanıcılara
+// dönülebilir. Dashboard bu isteğin sonucunu dürüst bir mesajla gösterir.
+app.post('/api/v2/premium/subscribe-request', authMiddleware, async (req, res) => {
+    try {
+        const plan = req.body.plan === 'monthly' ? 'monthly' : 'yearly';
+        await User.updateOne(
+            { _id: req.user.id },
+            { $set: { premiumRequestedAt: new Date(), premiumRequestedPlan: plan } }
+        );
+        res.json({ message: "İlgin kaydedildi! Ödeme altyapımız hazır olduğunda seni haberdar edeceğiz." });
+    } catch (err) {
+        res.status(500).json({ error: "İstek kaydedilemedi." });
+    }
+});
+
 // Adımları YürüPara'ya Çevir
 app.post('/api/v2/steps/convert', authMiddleware, async (req, res) => {
     try {
@@ -553,7 +645,7 @@ app.post('/api/v2/steps/convert', authMiddleware, async (req, res) => {
         const today = getTodayStr();
         await atomicEnsureDailyReset(userId, today);
 
-        const DAILY_MAX_CAP = 15000;
+        const BASE_DAILY_MAX_CAP = 15000;
 
         // Bug-fix (yarış durumu): dönüştürülecek miktar mevcut bakiyeye bağlı
         // olduğu için (sabit bir $inc değil) tek bir kör atomik komutla ifade
@@ -571,6 +663,13 @@ app.post('/api/v2/steps/convert', authMiddleware, async (req, res) => {
         for (let attempt = 0; attempt < 5 && !updated; attempt++) {
             const snapshot = await User.findById(userId).select('-password');
             if (!snapshot) return res.status(404).json({ error: "Kullanıcı bulunamadı." });
+
+            // Premium: modalın vaat ettiği "günlük dönüştürme limiti yok" - premiumUntil
+            // hâlâ gelecekteyse günlük tavan pratikte kaldırılır (Infinity). Ödeme
+            // sağlayıcısı bağlanana kadar isPremium/premiumUntil yalnızca admin'in
+            // /api/v2/admin/premium/grant ile elle verdiği bir değer.
+            const isPremiumActive = !!(snapshot.premiumUntil && new Date(snapshot.premiumUntil) > new Date());
+            const DAILY_MAX_CAP = isPremiumActive ? Infinity : BASE_DAILY_MAX_CAP;
 
             if (snapshot.todayConvertedSteps >= DAILY_MAX_CAP) {
                 // capReached: istemci bu bayrağı görünce Premium paywall ekranını açar.
@@ -599,7 +698,10 @@ app.post('/api/v2/steps/convert', authMiddleware, async (req, res) => {
                 && (Date.now() - new Date(snapshot.pendingDoubleBoostAt).getTime() < 60000);
 
             let pointsDelta = (convertAmount / 1000) * 0.10 * lvlData.multiplier;
-            if (boostCandidate) pointsDelta *= 2;
+            // Premium modalın vaat ettiği "2x YürüPara çarpanı her zaman aktif" burada
+            // uygulanır. boostCandidate ile birlikte gelirse (reklam bonusu + premium
+            // aynı anda) tekrar tekrar katlanmaz - en fazla 2x.
+            if (boostCandidate || isPremiumActive) pointsDelta *= 2;
             pointsDelta = Math.round(pointsDelta * 100) / 100;
 
             const matchCond = {
@@ -625,7 +727,7 @@ app.post('/api/v2/steps/convert', authMiddleware, async (req, res) => {
             if (result) {
                 updated = result;
                 earnedPoints = pointsDelta;
-                usedDouble = boostCandidate;
+                usedDouble = boostCandidate || isPremiumActive;
             }
         }
 
@@ -1040,17 +1142,55 @@ app.post('/api/v2/games/reward', authMiddleware, async (req, res) => {
 // Kayıt sonrası veri koruma/gizlilik sözleşmesi onayı
 app.post('/api/v2/user/accept-privacy', authMiddleware, async (req, res) => {
     try {
-        const user = await User.findById(req.user.id).select('-password');
-        user.privacyAccepted = true;
-        user.privacyAcceptedAt = new Date();
-        await user.save();
+        // Bug-fix: eski kod findById -> JS'de mutasyon -> save() (tam doküman üzerine
+        // yazma) kullanıyordu - diğer atomik güncellemelerle tutarsız tek yerdi ve
+        // eşzamanlı başka bir isteğin (ör. steps/add) arada yazdığı taze bir alanı
+        // bayat bir kopyayla üzerine yazma riski taşıyordu. Diğer route'larla aynı
+        // desene (koşulsuz ama alan-bazlı atomik $set) getirildi.
+        const user = await User.findByIdAndUpdate(
+            req.user.id,
+            { $set: { privacyAccepted: true, privacyAcceptedAt: new Date() } },
+            { new: true }
+        ).select('-password');
+        if (!user) return res.status(404).json({ error: "Kullanıcı bulunamadı." });
         res.json({ message: "Onayınız kaydedildi.", user });
     } catch (err) {
         res.status(500).json({ error: "Onay kaydedilemedi." });
     }
 });
 
-app.get('/api/v2/leaderboard', async (req, res) => {
+// Hesap Silme (KVKK "unutulma hakkı"): kullanıcı kendi hesabını ve ilişkili
+// Claim/Donation kayıtlarını kalıcı olarak siler. Onay için şifre yeniden
+// istenir (yalnızca geçerli bir oturum token'ı çalınmış/paylaşılmışsa bile
+// tek başına hesabı silmeye yetmesin diye) - Reward.stock/Charity gibi paylaşılan
+// kayıtlara dokunulmaz, yalnızca bu kullanıcıya ait veriler silinir.
+app.delete('/api/v2/user/me', authMiddleware, async (req, res) => {
+    try {
+        const { password } = req.body || {};
+        if (!password) return res.status(400).json({ error: "Hesabı silmek için şifrenizi girin." });
+
+        const user = await User.findById(req.user.id);
+        if (!user) return res.status(404).json({ error: "Kullanıcı bulunamadı." });
+
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) return res.status(400).json({ error: "Şifre hatalı." });
+
+        await Promise.all([
+            Claim.deleteMany({ userId: user._id }),
+            Donation.deleteMany({ userId: user._id }),
+            User.deleteOne({ _id: user._id })
+        ]);
+
+        res.json({ message: "Hesabınız ve tüm verileriniz kalıcı olarak silindi." });
+    } catch (err) {
+        res.status(500).json({ error: "Hesap silme hatası." });
+    }
+});
+
+// Bug-fix (gizlilik): önceden auth gerektirmiyordu - tüm kullanıcı adları,
+// adımları ve puanları oturum açmadan herkese açık, kimliksiz bir uç
+// noktadan okunabiliyordu. Artık sadece giriş yapmış kullanıcılar görebiliyor.
+app.get('/api/v2/leaderboard', authMiddleware, async (req, res) => {
     try {
         const topUsers = await User.find().select('name steps points streak level multiplier').sort({ steps: -1 }).limit(10);
         res.json({ leaderboard: topUsers });
@@ -1336,7 +1476,98 @@ app.put('/api/v2/admin/charities/:id/price', authMiddleware, adminMiddleware, as
     }
 });
 
-const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
-    console.log(`🚀 AdımKasası PRO (v2.6) Sunucusu http://localhost:${PORT} adresinde aktif!`);
+// Premium'u elle vermek (ör. banka havalesi/manuel ödeme sonrası) için - gerçek
+// ödeme sağlayıcısı bağlanana kadar tek "satın alma" yolu bu. days: kaç gün
+// premium verileceği (aylık plan için ~30, yıllık için ~365 önerilir).
+app.post('/api/v2/admin/premium/grant', authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+        const { email, plan, days } = req.body;
+        if (!email) return res.status(400).json({ error: "E-posta zorunludur." });
+        const numDays = parseInt(days);
+        if (!Number.isFinite(numDays) || numDays <= 0 || numDays > 3650) {
+            return res.status(400).json({ error: "Geçersiz gün sayısı." });
+        }
+        const until = new Date(Date.now() + numDays * 86400000);
+        const user = await User.findOneAndUpdate(
+            { email: String(email).trim().toLowerCase() },
+            { $set: { isPremium: true, premiumPlan: plan === 'monthly' ? 'monthly' : 'yearly', premiumUntil: until } },
+            { new: true }
+        ).select('-password');
+        if (!user) return res.status(404).json({ error: "Kullanıcı bulunamadı." });
+        res.json({ message: `"${user.email}" için premium ${until.toLocaleDateString('tr-TR')} tarihine kadar verildi.`, user });
+    } catch (err) {
+        res.status(500).json({ error: "Premium verme hatası." });
+    }
 });
+
+// Ödül kodu teslimatı sunucuda rastgele üretiliyor, gerçek tedarikçi entegrasyonu
+// yok (bkz. Claim modeli ve Obsidian notu). Admin bu listeden hangi kodların
+// gerçekten tedarik edilip doğrulandığını elle işaretleyebilir.
+app.get('/api/v2/admin/claims', authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+        const claims = await Claim.find().populate('userId', 'name email').sort({ claimedAt: -1 }).limit(100);
+        res.json({ claims });
+    } catch (err) {
+        res.status(500).json({ error: "Kod listesi alınamadı." });
+    }
+});
+
+app.put('/api/v2/admin/claims/:id/fulfillment', authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+        const { fulfillmentStatus, fulfillmentNote } = req.body;
+        if (!['unverified', 'verified', 'failed'].includes(fulfillmentStatus)) {
+            return res.status(400).json({ error: "Geçersiz durum." });
+        }
+        const claim = await Claim.findByIdAndUpdate(
+            req.params.id,
+            { $set: { fulfillmentStatus, fulfillmentNote: fulfillmentNote || '' } },
+            { new: true }
+        );
+        if (!claim) return res.status(404).json({ error: "Kayıt bulunamadı." });
+        res.json({ message: "Durum güncellendi.", claim });
+    } catch (err) {
+        res.status(500).json({ error: "Durum güncelleme hatası." });
+    }
+});
+
+// Bağışlar kuruma fiilen henüz otomatik aktarılmıyor (bkz. Donation modeli ve
+// Obsidian notu). Admin dönemsel olarak gerçek transferi yaptıktan sonra bu
+// uç noktayla ilgili bağışları "transferred" olarak toplu işaretler.
+app.get('/api/v2/admin/donations', authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+        const status = req.query.status === 'transferred' ? 'transferred' : (req.query.status === 'pending' ? 'pending' : undefined);
+        const filter = status ? { transferStatus: status } : {};
+        const donations = await Donation.find(filter).populate('userId', 'name email').sort({ donatedAt: -1 }).limit(200);
+        res.json({ donations });
+    } catch (err) {
+        res.status(500).json({ error: "Bağış listesi alınamadı." });
+    }
+});
+
+app.post('/api/v2/admin/donations/mark-transferred', authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+        const { donationIds } = req.body;
+        if (!Array.isArray(donationIds) || donationIds.length === 0) {
+            return res.status(400).json({ error: "En az bir bağış ID'si gerekli." });
+        }
+        const result = await Donation.updateMany(
+            { _id: { $in: donationIds }, transferStatus: 'pending' },
+            { $set: { transferStatus: 'transferred', transferredAt: new Date() } }
+        );
+        res.json({ message: `${result.modifiedCount} bağış transfer edildi olarak işaretlendi.` });
+    } catch (err) {
+        res.status(500).json({ error: "İşaretleme hatası." });
+    }
+});
+
+// Test ortamında (bkz. tests/) sunucu supertest ile doğrudan app'i import edip
+// dinlemeden istek atar - gerçek bir portu dinlemek testlerde ne gerekli ne
+// güvenli (paralel test koşumlarında port çakışması riski).
+if (process.env.NODE_ENV !== 'test') {
+    const PORT = process.env.PORT || 3001;
+    app.listen(PORT, () => {
+        console.log(`🚀 AdımKasası PRO (v2.6) Sunucusu http://localhost:${PORT} adresinde aktif!`);
+    });
+}
+
+module.exports = app;
