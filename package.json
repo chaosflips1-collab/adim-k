@@ -4,7 +4,8 @@
   "description": "AdımKasası PRO v2 - Pazar Standardı Gelişmiş Adım Ödül & Bağış Platformu",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "jest --runInBand"
   },
   "keywords": [],
   "author": "",
@@ -18,11 +19,16 @@
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.6.2",
     "google-auth-library": "^11.0.0",
+    "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^9.9.1"
   },
   "devDependencies": {
-    "@capacitor/cli": "^8.5.0"
+    "@capacitor/cli": "^8.5.0",
+    "jest": "^30.4.2",
+    "mongodb-memory-server": "^11.2.0",
+    "supertest": "^7.2.2"
   }
 }
